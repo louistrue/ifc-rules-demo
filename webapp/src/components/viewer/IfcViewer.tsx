@@ -9,6 +9,9 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { IfcParser } from '@ifc-lite/parser';
+import { Renderer } from '@ifc-lite/renderer';
+import { createPlatformBridge } from '@ifc-lite/geometry';
 import { useIfcStore } from '../../stores/ifc-store';
 import { useRuleStore } from '../../stores/rule-store';
 
@@ -22,9 +25,9 @@ export function IfcViewer({ className = '' }: IfcViewerProps) {
 
   const {
     file,
+    fileBuffer,
     isLoading,
     loadError,
-    viewer,
   } = useIfcStore();
 
   const {
@@ -33,6 +36,9 @@ export function IfcViewer({ className = '' }: IfcViewerProps) {
     dimNonMatched,
   } = useRuleStore();
 
+  const rendererRef = useRef<Renderer | null>(null);
+  const parserRef = useRef<IfcParser | null>(null);
+
   // ==========================================================================
   // Initialize Renderer
   // ==========================================================================
@@ -40,38 +46,119 @@ export function IfcViewer({ className = '' }: IfcViewerProps) {
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    // Initialize ifc-lite renderer here
-    // const renderer = new Renderer(canvasRef.current);
-    // useIfcStore.getState().setViewer(createViewerAdapter(renderer, []));
+    const initRenderer = async () => {
+      try {
+        const renderer = new Renderer(canvasRef.current!);
+        await renderer.init();
+        rendererRef.current = renderer;
+        console.log('Renderer initialized');
+      } catch (error) {
+        console.error('Failed to initialize renderer:', error);
+        useIfcStore.getState().setError('WebGPU not supported or failed to initialize');
+      }
+    };
+
+    initRenderer();
 
     return () => {
-      // Cleanup renderer
+      // Cleanup renderer if it has a destroy/dispose method
+      (rendererRef.current as { destroy?: () => void })?.destroy?.();
+      rendererRef.current = null;
     };
   }, []);
+
+  // ==========================================================================
+  // Parse IFC when fileBuffer changes
+  // ==========================================================================
+
+  useEffect(() => {
+    if (!fileBuffer || !rendererRef.current) return;
+
+    const parseAndRender = async () => {
+      const store = useIfcStore.getState();
+      const renderer = rendererRef.current;
+      
+      try {
+        console.log('Parsing IFC file...');
+        
+        // Parse entities
+        const parser = new IfcParser();
+        parserRef.current = parser;
+        const result = await parser.parse(fileBuffer);
+        console.log('Parse complete:', result.entityCount, 'entities');
+        store.setParseResult(result);
+
+        // Process geometry using platform bridge (handles WASM loading)
+        console.log('Processing geometry...');
+        const bridge = await createPlatformBridge();
+        await bridge.init();
+        
+        // Convert ArrayBuffer to string for the bridge
+        const decoder = new TextDecoder('utf-8');
+        const ifcContent = decoder.decode(fileBuffer);
+        
+        // Stream geometry in batches for progressive rendering
+        await bridge.processGeometryStreaming(ifcContent, {
+          onBatch: (batch) => {
+            renderer?.addMeshes(batch.meshes, true);
+            renderer?.render();
+            console.log(`Loaded batch: ${batch.meshes.length} meshes`);
+          },
+          onComplete: (stats) => {
+            console.log('Geometry complete:', stats);
+            renderer?.fitToView();
+            store.setLoading(false);
+          },
+          onError: (error) => {
+            console.error('Geometry processing error:', error);
+            store.setError(error.message);
+          },
+        });
+      } catch (error) {
+        console.error('Parse/render error:', error);
+        store.setError(
+          error instanceof Error ? error.message : 'Failed to parse IFC file'
+        );
+      }
+    };
+
+    parseAndRender();
+  }, [fileBuffer]);
 
   // ==========================================================================
   // Update Highlights when matches change
   // ==========================================================================
 
   useEffect(() => {
-    if (!viewer || matchedIds.length === 0) return;
+    if (!rendererRef.current || matchedIds.length === 0) return;
+
+    // ifc-lite renderer highlighting API
+    const renderer = rendererRef.current as {
+      highlight?: (ids: number[]) => void;
+      isolate?: (ids: number[]) => void;
+      hide?: (ids: number[]) => void;
+      clearHighlights?: () => void;
+      render?: () => void;
+    };
 
     switch (viewMode) {
       case 'highlight':
-        viewer.highlightMatched(matchedIds);
+        renderer.highlight?.(matchedIds);
         break;
       case 'isolate':
-        viewer.isolate(matchedIds);
+        renderer.isolate?.(matchedIds);
         break;
       case 'hide':
-        viewer.hideElements(matchedIds);
+        renderer.hide?.(matchedIds);
         break;
     }
+    renderer.render?.();
 
     return () => {
-      viewer.clearHighlights();
+      renderer.clearHighlights?.();
+      renderer.render?.();
     };
-  }, [viewer, matchedIds, viewMode, dimNonMatched]);
+  }, [matchedIds, viewMode, dimNonMatched]);
 
   // ==========================================================================
   // File Drop Handlers
@@ -94,14 +181,27 @@ export function IfcViewer({ className = '' }: IfcViewerProps) {
     const files = e.dataTransfer.files;
     if (files.length === 0) return;
 
-    const file = files[0];
-    if (!file.name.toLowerCase().endsWith('.ifc')) {
+    const droppedFile = files[0];
+    if (!droppedFile.name.toLowerCase().endsWith('.ifc')) {
       useIfcStore.getState().setError('Please drop an IFC file');
       return;
     }
 
     // Load file
-    await loadIfcFile(file);
+    const store = useIfcStore.getState();
+    store.setLoading(true);
+    store.setFile({
+      name: droppedFile.name,
+      size: droppedFile.size,
+      loadedAt: new Date(),
+    });
+
+    try {
+      const buffer = await droppedFile.arrayBuffer();
+      store.setFileBuffer(buffer);
+    } catch (error) {
+      store.setError(error instanceof Error ? error.message : 'Failed to load file');
+    }
   }, []);
 
   // ==========================================================================
@@ -196,43 +296,6 @@ function LoadingSpinner() {
       />
     </svg>
   );
-}
-
-// ==========================================================================
-// File Loading (stub - would use ifc-lite parser)
-// ==========================================================================
-
-async function loadIfcFile(file: File): Promise<void> {
-  const store = useIfcStore.getState();
-
-  try {
-    store.setLoading(true);
-    store.setFile({
-      name: file.name,
-      size: file.size,
-      loadedAt: new Date(),
-    });
-
-    // Read file buffer
-    const buffer = await file.arrayBuffer();
-
-    // Parse with ifc-lite
-    // const parser = new IfcParser();
-    // const result = await parser.parse(buffer);
-
-    // Build element index
-    // const index = await buildElementIndex(result, { ... });
-    // store.setIndex(index);
-
-    // Extract schema for autocomplete
-    // const schema = extractIfcSchema(index);
-    // store.setSchema(schema);
-
-    console.log('File loaded:', file.name, file.size, 'bytes');
-
-  } catch (error) {
-    store.setError(error instanceof Error ? error.message : 'Failed to load file');
-  }
 }
 
 export default IfcViewer;

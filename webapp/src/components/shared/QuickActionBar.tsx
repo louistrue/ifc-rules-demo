@@ -27,8 +27,23 @@ export function QuickActionBar() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // Load file logic would go here
-    console.log('Loading file:', files[0].name);
+    const file = files[0];
+    console.log('Loading file:', file.name);
+
+    const store = useIfcStore.getState();
+    store.setLoading(true);
+    store.setFile({
+      name: file.name,
+      size: file.size,
+      loadedAt: new Date(),
+    });
+
+    try {
+      const buffer = await file.arrayBuffer();
+      store.setFileBuffer(buffer);
+    } catch (error) {
+      store.setError(error instanceof Error ? error.message : 'Failed to load file');
+    }
   };
 
   return (

@@ -22,10 +22,12 @@ interface IfcFile {
 interface IfcStoreState {
   // File info
   file: IfcFile | null;
+  fileBuffer: ArrayBuffer | null;
   isLoading: boolean;
   loadError: string | null;
 
   // Parsed data
+  parseResult: unknown | null;  // IfcParser result
   index: ElementIndex | null;
   schema: IfcFileSchema | null;
   allElementIds: number[];
@@ -37,6 +39,8 @@ interface IfcStoreState {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setFile: (file: IfcFile) => void;
+  setFileBuffer: (buffer: ArrayBuffer) => void;
+  setParseResult: (result: unknown) => void;
   setIndex: (index: ElementIndex) => void;
   setSchema: (schema: IfcFileSchema) => void;
   setViewer: (viewer: ViewerAdapter) => void;
@@ -50,8 +54,10 @@ interface IfcStoreState {
 export const useIfcStore = create<IfcStoreState>((set) => ({
   // Initial state
   file: null,
+  fileBuffer: null,
   isLoading: false,
   loadError: null,
+  parseResult: null,
   index: null,
   schema: null,
   allElementIds: [],
@@ -64,6 +70,10 @@ export const useIfcStore = create<IfcStoreState>((set) => ({
 
   setFile: (file) => set({ file }),
 
+  setFileBuffer: (fileBuffer) => set({ fileBuffer }),
+
+  setParseResult: (parseResult) => set({ parseResult, isLoading: false }),
+
   setIndex: (index) => set({
     index,
     allElementIds: Array.from(index.elements.keys()),
@@ -75,8 +85,10 @@ export const useIfcStore = create<IfcStoreState>((set) => ({
 
   reset: () => set({
     file: null,
+    fileBuffer: null,
     isLoading: false,
     loadError: null,
+    parseResult: null,
     index: null,
     schema: null,
     allElementIds: [],
