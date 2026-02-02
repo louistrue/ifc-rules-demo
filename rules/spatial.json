@@ -1,0 +1,184 @@
+{
+  "name": "Spatial Selection Rules",
+  "description": "Rules for selecting elements by spatial location",
+  "rules": [
+    {
+      "id": "ground-floor-elements",
+      "name": "Ground Floor Elements",
+      "description": "All elements on the ground floor (by name pattern)",
+      "conditions": [
+        {
+          "type": "spatial",
+          "level": "storey",
+          "name": "*Ground*"
+        }
+      ]
+    },
+    {
+      "id": "basement-elements",
+      "name": "Basement Elements",
+      "description": "All elements in basement levels",
+      "conditions": [
+        {
+          "type": "or",
+          "conditions": [
+            {
+              "type": "spatial",
+              "level": "storey",
+              "name": "*Basement*"
+            },
+            {
+              "type": "spatial",
+              "level": "storey",
+              "name": "*B1*"
+            },
+            {
+              "type": "spatial",
+              "level": "storey",
+              "name": "*B2*"
+            },
+            {
+              "type": "spatial",
+              "level": "storey",
+              "elevation": {
+                "operator": "lessThan",
+                "value": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "roof-level-elements",
+      "name": "Roof Level Elements",
+      "description": "Elements on roof level",
+      "conditions": [
+        {
+          "type": "spatial",
+          "level": "storey",
+          "name": "*Roof*"
+        }
+      ]
+    },
+    {
+      "id": "elements-by-elevation",
+      "name": "Elements Between 0-4m",
+      "description": "Elements on storeys between 0 and 4 meters elevation",
+      "conditions": [
+        {
+          "type": "spatial",
+          "level": "storey",
+          "elevation": {
+            "operator": "between",
+            "value": 0,
+            "valueTo": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "large-spaces",
+      "name": "Large Spaces (>50m²)",
+      "description": "Spaces with net floor area over 50 square meters",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": "IfcSpace"
+        },
+        {
+          "type": "quantity",
+          "quantityName": "NetFloorArea",
+          "operator": "greaterThan",
+          "value": 50
+        }
+      ]
+    },
+    {
+      "id": "corridors",
+      "name": "Corridor Spaces",
+      "description": "Spaces marked as corridors",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": "IfcSpace"
+        },
+        {
+          "type": "or",
+          "conditions": [
+            {
+              "type": "attribute",
+              "attribute": "name",
+              "operator": "contains",
+              "value": "Corridor"
+            },
+            {
+              "type": "attribute",
+              "attribute": "objectType",
+              "operator": "equals",
+              "value": "Corridor"
+            },
+            {
+              "type": "property",
+              "propertySet": "Pset_SpaceCommon",
+              "propertyName": "Category",
+              "operator": "equals",
+              "value": "Circulation"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "exterior-elements",
+      "name": "All Exterior Elements",
+      "description": "Elements marked as external",
+      "conditions": [
+        {
+          "type": "property",
+          "propertySet": "*",
+          "propertyName": "IsExternal",
+          "operator": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "wet-areas",
+      "name": "Wet Area Elements",
+      "description": "Elements in bathrooms, kitchens, and other wet areas",
+      "conditions": [
+        {
+          "type": "or",
+          "conditions": [
+            {
+              "type": "spatial",
+              "level": "space",
+              "name": "*Bathroom*"
+            },
+            {
+              "type": "spatial",
+              "level": "space",
+              "name": "*Toilet*"
+            },
+            {
+              "type": "spatial",
+              "level": "space",
+              "name": "*Kitchen*"
+            },
+            {
+              "type": "spatial",
+              "level": "space",
+              "name": "*Shower*"
+            },
+            {
+              "type": "spatial",
+              "level": "space",
+              "name": "*WC*"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
