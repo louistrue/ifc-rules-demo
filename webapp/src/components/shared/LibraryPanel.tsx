@@ -122,13 +122,26 @@ const SAMPLE_RULES: { category: string; rules: SelectionRule[] }[] = [
 export function LibraryPanel() {
   const isLibraryOpen = useRuleStore(state => state.isLibraryOpen);
   const savedRules = useRuleStore(state => state.savedRules);
+  const currentRule = useRuleStore(state => state.currentRule);
   const toggleLibrary = useRuleStore(state => state.toggleLibrary);
   const loadRule = useRuleStore(state => state.loadRule);
+  const clearConditions = useRuleStore(state => state.clearConditions);
   const deleteRule = useRuleStore(state => state.deleteRule);
   const exportRules = useRuleStore(state => state.exportRules);
   const importRules = useRuleStore(state => state.importRules);
   
   const [activeTab, setActiveTab] = useState<'samples' | 'saved'>('samples');
+
+  // Toggle rule: load if different, clear if same
+  const handleRuleClick = (rule: SelectionRule) => {
+    if (currentRule.id === rule.id) {
+      // Same rule - clear it
+      clearConditions();
+    } else {
+      // Different rule - load it
+      loadRule(rule);
+    }
+  };
 
   if (!isLibraryOpen) return null;
 
@@ -205,23 +218,36 @@ export function LibraryPanel() {
                   {category.category}
                 </h3>
                 <div className="space-y-1">
-                  {category.rules.map((rule) => (
-                    <button
-                      key={rule.id}
-                      onClick={() => loadRule(rule)}
-                      className="w-full text-left bg-gray-700/30 hover:bg-gray-700 rounded-lg p-3 transition-colors group"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-white font-medium text-sm">{rule.name}</span>
-                        <span className="text-xs text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                          Load →
-                        </span>
-                      </div>
-                      {rule.description && (
-                        <p className="text-xs text-gray-400 mt-1">{rule.description}</p>
-                      )}
-                    </button>
-                  ))}
+                  {category.rules.map((rule) => {
+                    const isActive = currentRule.id === rule.id;
+                    return (
+                      <button
+                        key={rule.id}
+                        onClick={() => handleRuleClick(rule)}
+                        className={`w-full text-left rounded-lg p-3 transition-colors group ${
+                          isActive
+                            ? 'bg-blue-600 hover:bg-blue-500'
+                            : 'bg-gray-700/30 hover:bg-gray-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-white font-medium text-sm">{rule.name}</span>
+                          <span className={`text-xs transition-opacity ${
+                            isActive
+                              ? 'text-white opacity-100'
+                              : 'text-blue-400 opacity-0 group-hover:opacity-100'
+                          }`}>
+                            {isActive ? '✓ Active' : 'Load →'}
+                          </span>
+                        </div>
+                        {rule.description && (
+                          <p className={`text-xs mt-1 ${isActive ? 'text-blue-100' : 'text-gray-400'}`}>
+                            {rule.description}
+                          </p>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -236,33 +262,44 @@ export function LibraryPanel() {
             </div>
           ) : (
             <div className="space-y-2">
-              {savedRules.map((rule) => (
-                <div
-                  key={rule.id}
-                  className="bg-gray-700/50 rounded-lg p-3 hover:bg-gray-700 transition-colors"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-white font-medium">{rule.name}</span>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => loadRule(rule)}
-                        className="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded"
-                      >
-                        Load
-                      </button>
-                      <button
-                        onClick={() => deleteRule(rule.id)}
-                        className="px-2 py-1 text-xs bg-red-600/50 hover:bg-red-600 text-white rounded"
-                      >
-                        Delete
-                      </button>
+              {savedRules.map((rule) => {
+                const isActive = currentRule.id === rule.id;
+                return (
+                  <div
+                    key={rule.id}
+                    className={`rounded-lg p-3 transition-colors ${
+                      isActive
+                        ? 'bg-blue-600 hover:bg-blue-500'
+                        : 'bg-gray-700/50 hover:bg-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-white font-medium">{rule.name}</span>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => handleRuleClick(rule)}
+                          className={`px-2 py-1 text-xs rounded ${
+                            isActive
+                              ? 'bg-blue-500 hover:bg-blue-400 text-white'
+                              : 'bg-blue-600 hover:bg-blue-500 text-white'
+                          }`}
+                        >
+                          {isActive ? 'Clear' : 'Load'}
+                        </button>
+                        <button
+                          onClick={() => deleteRule(rule.id)}
+                          className="px-2 py-1 text-xs bg-red-600/50 hover:bg-red-600 text-white rounded"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                    <div className={`text-xs ${isActive ? 'text-blue-100' : 'text-gray-400'}`}>
+                      {rule.conditions.length} condition{rule.conditions.length !== 1 ? 's' : ''}
                     </div>
                   </div>
-                  <div className="text-xs text-gray-400">
-                    {rule.conditions.length} condition{rule.conditions.length !== 1 ? 's' : ''}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )
         )}

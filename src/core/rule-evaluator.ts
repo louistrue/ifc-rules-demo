@@ -83,10 +83,28 @@ function evaluateTypeCondition(element: UnifiedElement, condition: TypeCondition
 
   const includeSubtypes = condition.includeSubtypes !== false; // default true
 
+  // Debug logging for first element
+  if (!evaluateTypeCondition._logged) {
+    evaluateTypeCondition._logged = true;
+    console.log('[TypeCondition] First element:', {
+      elementType: element.type,
+      inheritanceChain: element.inheritanceChain,
+      conditionTypes: types,
+      includeSubtypes,
+    });
+  }
+
   for (const type of types) {
+    // Normalize type for comparison (IFC types can be UPPERCASE or MixedCase)
+    const normalizedType = type.toUpperCase();
+    
     if (includeSubtypes) {
-      // Check if element's type or any of its supertypes match
-      if (element.inheritanceChain.includes(type)) {
+      // Check if element's type or any of its supertypes match (case-insensitive)
+      const matchesChain = element.inheritanceChain?.some(
+        chainType => chainType.toUpperCase() === normalizedType
+      ) ?? false;
+      
+      if (matchesChain) {
         // Check predefinedType if specified
         if (condition.predefinedType) {
           if (!matchesPattern(element.predefinedType, condition.predefinedType)) {
@@ -96,8 +114,8 @@ function evaluateTypeCondition(element: UnifiedElement, condition: TypeCondition
         return true;
       }
     } else {
-      // Exact type match only
-      if (matchesPattern(element.type, type)) {
+      // Exact type match only (case-insensitive)
+      if (element.type?.toUpperCase() === normalizedType) {
         if (condition.predefinedType) {
           if (!matchesPattern(element.predefinedType, condition.predefinedType)) {
             continue;
@@ -110,6 +128,8 @@ function evaluateTypeCondition(element: UnifiedElement, condition: TypeCondition
 
   return false;
 }
+// Static flag for logging
+(evaluateTypeCondition as any)._logged = false;
 
 /**
  * Evaluate property condition
@@ -549,6 +569,13 @@ function validateRule(rule: SelectionRule, index: ElementIndex): ValidationResul
  * Create a rule engine instance
  */
 export function createRuleEngine(index: ElementIndex): RuleEngine {
+  // Debug: count elements in index
+  let elementCount = 0;
+  for (const _el of index) {
+    elementCount++;
+  }
+  console.log('[RuleEngine] Created with', elementCount, 'elements');
+
   return {
     index,
 
@@ -557,9 +584,11 @@ export function createRuleEngine(index: ElementIndex): RuleEngine {
 
       const matchedIds: number[] = [];
       const mode = rule.mode || 'all';
+      let checkedCount = 0;
 
       // Iterate all elements
       for (const element of index) {
+        checkedCount++;
         let matches: boolean;
 
         if (mode === 'all') {
@@ -580,6 +609,8 @@ export function createRuleEngine(index: ElementIndex): RuleEngine {
       }
 
       const evaluationTime = performance.now() - startTime;
+
+      console.log('[RuleEngine] select() checked', checkedCount, 'elements, matched', matchedIds.length);
 
       return createSelectionResult(matchedIds, rule, index, evaluationTime);
     },

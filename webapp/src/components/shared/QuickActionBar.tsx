@@ -7,6 +7,7 @@
 import React, { useRef } from 'react';
 import { useIfcStore } from '../../stores/ifc-store';
 import { useRuleStore } from '../../stores/rule-store';
+import { loadIfcFileDemo } from '../../lib/ifc-loader';
 
 export function QuickActionBar() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -23,6 +24,62 @@ export function QuickActionBar() {
 
   const handleFileClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleLoadDemo = async () => {
+    const DEMO_MODEL_URL = 'https://media.githubusercontent.com/media/louistrue/ifc-lite/main/tests/models/various/01_BIMcollab_Example_ARC.ifc';
+    const DEMO_MODEL_NAME = '01_BIMcollab_Example_ARC.ifc';
+    
+    console.log('Loading demo model from GitHub...');
+    const store = useIfcStore.getState();
+    store.setLoading(true);
+    store.setFile({
+      name: DEMO_MODEL_NAME,
+      size: 0,
+      loadedAt: new Date(),
+    });
+
+    try {
+      // Fetch the IFC file from GitHub
+      console.log('Fetching:', DEMO_MODEL_URL);
+      const response = await fetch(DEMO_MODEL_URL);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch demo model: ${response.status} ${response.statusText}`);
+      }
+      
+      const buffer = await response.arrayBuffer();
+      console.log('Demo model fetched, size:', buffer.byteLength);
+      
+      // Update file size now that we know it
+      store.setFile({
+        name: DEMO_MODEL_NAME,
+        size: buffer.byteLength,
+        loadedAt: new Date(),
+      });
+      
+      // This will trigger the IfcViewer to parse and render
+      store.setFileBuffer(buffer);
+    } catch (error) {
+      console.error('Failed to load demo model:', error);
+      
+      // Fallback to mock data if fetch fails
+      console.log('Falling back to mock data...');
+      try {
+        const result = await loadIfcFileDemo(new ArrayBuffer(0));
+        console.log('Mock data loaded:', result.stats);
+        store.setIndex(result.index);
+        store.setSchema(result.schema);
+        store.setFile({
+          name: 'demo-model.ifc (mock)',
+          size: 0,
+          loadedAt: new Date(),
+        });
+        store.setLoading(false);
+      } catch (mockError) {
+        store.setError('Failed to load demo: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      }
+    }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -73,6 +130,21 @@ export function QuickActionBar() {
           onChange={handleFileChange}
           className="hidden"
         />
+
+        {/* Demo Button */}
+        {!file && (
+          <button
+            onClick={handleLoadDemo}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm text-yellow-300 hover:text-yellow-200 hover:bg-gray-700 transition-colors disabled:opacity-50"
+            title="Load demo data for testing"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            <span className="hidden sm:inline">Demo</span>
+          </button>
+        )}
 
         {/* Divider */}
         <div className="w-px h-6 bg-gray-600" />

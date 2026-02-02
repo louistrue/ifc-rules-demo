@@ -11,8 +11,9 @@
 import React, { useState, useCallback } from 'react';
 import { useIfcStore, selectSchema, selectEntityTypes, selectStoreys } from '../../stores/ifc-store';
 import { useRuleStore, selectConditions, selectMatchCount, selectCurrentEntityType } from '../../stores/rule-store';
-import type { Condition, PropertyCondition, SpatialCondition, MaterialCondition } from '../../../../src/core/types';
+import type { Condition, PropertyCondition, SpatialCondition, MaterialCondition, AttributeCondition, QuantityCondition, ClassificationCondition, RelationshipCondition, CompositeCondition } from '../../../../src/core/types';
 import { getPropertySetsForType, getSuggestedConditions } from '../../lib/schema-extractor';
+import { AiRuleInput } from './AiRuleInput';
 
 // ============================================================================
 // Main Panel Component
@@ -40,9 +41,22 @@ export function RuleBuilderPanel() {
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isDragging) return;
+    
+    // Calculate new position
+    let newX = e.clientX - dragOffset.x;
+    let newY = e.clientY - dragOffset.y;
+    
+    // Constrain to viewport bounds
+    const panelWidth = 420;
+    const panelHeight = 600; // Approximate max height
+    const padding = 20;
+    
+    newX = Math.max(padding, Math.min(newX, window.innerWidth - panelWidth - padding));
+    newY = Math.max(padding, Math.min(newY, window.innerHeight - panelHeight - padding));
+    
     setPosition({
-      x: e.clientX - dragOffset.x,
-      y: e.clientY - dragOffset.y,
+      x: newX,
+      y: newY,
     });
   }, [isDragging, dragOffset, setPosition]);
 
@@ -61,20 +75,34 @@ export function RuleBuilderPanel() {
     }
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
+  // Ensure panel stays within viewport bounds (must be before early return to follow rules of hooks)
+  const constrainedPosition = React.useMemo(() => {
+    const panelWidth = 420;
+    const panelHeight = 600; // Approximate max height
+    const padding = 20;
+    
+    return {
+      x: Math.max(padding, Math.min(position.x, window.innerWidth - panelWidth - padding)),
+      y: Math.max(padding, Math.min(position.y, window.innerHeight - panelHeight - padding)),
+    };
+  }, [position]);
+
   if (!isOpen) return null;
 
   return (
     <div
-      className="fixed bg-gray-800 rounded-lg shadow-2xl border border-gray-700 w-96 select-none"
+      className="fixed bg-gray-800 rounded-xl shadow-2xl border border-gray-700 select-none flex flex-col"
       style={{
-        left: position.x,
-        top: position.y,
+        left: `${constrainedPosition.x}px`,
+        top: `${constrainedPosition.y}px`,
+        width: '420px',
+        maxHeight: 'calc(100vh - 40px)',
         zIndex: 1000,
       }}
     >
       {/* Header */}
       <div
-        className="flex items-center justify-between px-4 py-3 border-b border-gray-700 cursor-move"
+        className="flex items-center justify-between px-4 py-3 border-b border-gray-700 cursor-move flex-shrink-0"
         onMouseDown={handleMouseDown}
       >
         <div className="flex items-center gap-2">
@@ -104,15 +132,21 @@ export function RuleBuilderPanel() {
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+      {/* Content - Scrollable */}
+      <div 
+        className="p-4 space-y-4 overflow-y-auto overflow-x-visible flex-1 min-h-0" 
+        onClick={(e) => e.stopPropagation()}
+      >
+        <AiRuleInput />
         <TypeSelector />
         <ConditionsList />
         <AddConditionButton />
       </div>
 
-      {/* Footer with match count */}
-      <MatchCountFooter />
+      {/* Footer with match count - Fixed at bottom */}
+      <div className="flex-shrink-0">
+        <MatchCountFooter />
+      </div>
     </div>
   );
 }
@@ -125,10 +159,25 @@ function TypeSelector() {
   const schema = useIfcStore(selectSchema);
   const entityTypes = useIfcStore(selectEntityTypes);
   const currentType = useRuleStore(selectCurrentEntityType);
-  const setEntityType = useRuleStore(state => state.setEntityType);
+  const addEntityType = useRuleStore(state => state.addEntityType);
+  const removeEntityType = useRuleStore(state => state.removeEntityType);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
 
   // Filter types by search
   const filteredTypes = entityTypes.filter(t =>
@@ -137,103 +186,172 @@ function TypeSelector() {
 
   const selectedTypes = Array.isArray(currentType) ? currentType : (currentType ? [currentType] : []);
 
+  // Multi-select: toggle individual types
   const handleTypeToggle = (type: string) => {
     if (selectedTypes.includes(type)) {
-      const newTypes = selectedTypes.filter(t => t !== type);
-      setEntityType(newTypes.length === 1 ? newTypes[0] : newTypes);
+      // Remove this type only
+      removeEntityType(type);
     } else {
-      setEntityType([...selectedTypes, type]);
+      // Add this type to selection
+      addEntityType(type);
     }
+    // Keep dropdown open for multi-select
+    setSearchQuery('');
   };
 
+  // Handle removing a single type from the chips
+  const handleRemoveType = (type: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    removeEntityType(type);
+  };
+
+  // Show selected types even if schema not loaded yet
   if (!schema) {
     return (
-      <div className="text-gray-400 text-sm">
-        Load an IFC file to see available types
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Element Type</label>
+        {selectedTypes.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {selectedTypes.map(type => (
+              <span
+                key={type}
+                className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600/30 text-blue-300 rounded text-sm"
+              >
+                {type}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="text-gray-500 text-sm italic py-2">
+            Load an IFC file to see available types
+          </div>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
-      <label className="text-sm text-gray-400">Element Type</label>
+    <div className="space-y-2" ref={dropdownRef}>
+      <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Element Type</label>
 
-      <div className="relative">
+      {/* Selected type display or selector button */}
+      {selectedTypes.length > 0 ? (
+        <div className="flex items-center gap-2">
+          <div className="flex-1 flex flex-wrap gap-1">
+            {selectedTypes.map(type => {
+              const typeInfo = entityTypes.find(t => t.type === type);
+              return (
+                <span
+                  key={type}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm"
+                >
+                  <span>{type}</span>
+                  {typeInfo && <span className="text-blue-200">({typeInfo.count})</span>}
+                  <button
+                    onClick={(e) => handleRemoveType(type, e)}
+                    className="hover:text-blue-200 ml-1"
+                    title={`Remove ${type}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="px-2 py-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded"
+            title="Add more types"
+          >
+            ✎
+          </button>
+        </div>
+      ) : (
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full px-3 py-2 bg-gray-700 rounded-lg text-left text-white flex items-center justify-between hover:bg-gray-600"
+          className="w-full px-3 py-2.5 bg-gray-700 rounded-lg text-left text-gray-400 flex items-center justify-between hover:bg-gray-600 hover:text-white transition-colors"
         >
-          <span>
-            {selectedTypes.length === 0
-              ? 'Select type...'
-              : selectedTypes.length === 1
-                ? selectedTypes[0]
-                : `${selectedTypes.length} types selected`}
-          </span>
-          <span className="text-gray-400">▼</span>
+          <span>Select element type...</span>
+          <span className="text-gray-500">▼</span>
         </button>
+      )}
 
-        {isOpen && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-gray-700 rounded-lg shadow-lg border border-gray-600 z-10 max-h-60 overflow-y-auto">
+      {/* Dropdown - rendered as portal-like fixed element for better visibility */}
+      {isOpen && (
+        <div className="fixed inset-0 z-[100]" onClick={() => setIsOpen(false)}>
+          <div 
+            className="absolute bg-gray-800 rounded-xl shadow-2xl border border-gray-600 overflow-hidden"
+            style={{
+              top: '120px',
+              left: '20px',
+              width: '360px',
+              maxHeight: '400px',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Search input */}
-            <div className="p-2 border-b border-gray-600">
+            <div className="p-3 border-b border-gray-700 bg-gray-800/80 sticky top-0">
               <input
                 type="text"
                 placeholder="Search types..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-2 py-1 bg-gray-800 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full px-4 py-3 bg-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 autoFocus
               />
             </div>
 
-            {/* Type list */}
-            <div className="p-1">
-              {filteredTypes.map(({ type, count }) => (
-                <button
-                  key={type}
-                  onClick={() => handleTypeToggle(type)}
-                  className={`w-full px-3 py-2 rounded flex items-center justify-between text-sm ${
-                    selectedTypes.includes(type)
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-200 hover:bg-gray-600'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <span className={`w-4 h-4 border rounded ${
-                      selectedTypes.includes(type)
-                        ? 'bg-blue-500 border-blue-500'
-                        : 'border-gray-500'
-                    }`}>
-                      {selectedTypes.includes(type) && '✓'}
-                    </span>
-                    {type}
-                  </span>
-                  <span className="text-gray-400">({count})</span>
-                </button>
-              ))}
+            {/* Type list - multi-select with checkmarks */}
+            <div className="overflow-y-auto" style={{ maxHeight: '340px' }}>
+              {filteredTypes.length === 0 ? (
+                <div className="p-6 text-center text-gray-400">
+                  No types found
+                </div>
+              ) : (
+                filteredTypes.map(({ type, count }) => {
+                  const isSelected = selectedTypes.includes(type);
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => handleTypeToggle(type)}
+                      className={`w-full px-4 py-3 flex items-center gap-3 text-sm border-b border-gray-700/50 last:border-0 transition-colors ${
+                        isSelected
+                          ? 'bg-blue-600/20 text-white'
+                          : 'text-gray-200 hover:bg-gray-700'
+                      }`}
+                    >
+                      {/* Checkbox indicator */}
+                      <span className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                        isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-500'
+                      }`}>
+                        {isSelected && (
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </span>
+                      <span className="font-medium text-base flex-1 text-left">{type}</span>
+                      <span className={`text-sm ${isSelected ? 'text-blue-300' : 'text-gray-400'}`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
             </div>
-          </div>
-        )}
-      </div>
 
-      {/* Selected type chips */}
-      {selectedTypes.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {selectedTypes.map(type => (
-            <span
-              key={type}
-              className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600/30 text-blue-300 rounded text-sm"
-            >
-              {type}
-              <button
-                onClick={() => handleTypeToggle(type)}
-                className="hover:text-white"
-              >
-                ×
-              </button>
-            </span>
-          ))}
+            {/* Done button for multi-select */}
+            {selectedTypes.length > 0 && (
+              <div className="p-3 border-t border-gray-700 bg-gray-800/80">
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
+                >
+                  Done ({selectedTypes.length} selected)
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -289,18 +407,64 @@ function ConditionChip({ condition, onRemove }: ConditionChipProps) {
     switch (condition.type) {
       case 'property': {
         const c = condition as PropertyCondition;
-        return `${c.propertySet}.${c.propertyName} ${c.operator} ${JSON.stringify(c.value)}`;
+        const valueStr = c.value !== undefined && c.value !== null 
+          ? JSON.stringify(c.value) 
+          : c.operator === 'exists' || c.operator === 'notExists' 
+            ? '' 
+            : '?';
+        return `${c.propertySet}.${c.propertyName} ${c.operator}${valueStr ? ' ' + valueStr : ''}`;
       }
       case 'spatial': {
         const c = condition as SpatialCondition;
-        return `${c.level}: ${c.name || `elevation ${c.elevation?.operator} ${c.elevation?.value}`}`;
+        if (c.name) {
+          return `${c.level}: ${c.name}`;
+        }
+        if (c.elevation) {
+          return `${c.level} elevation ${c.elevation.operator} ${c.elevation.value}${c.elevation.valueTo ? ` - ${c.elevation.valueTo}` : ''}`;
+        }
+        return `${c.level}: any`;
       }
       case 'material': {
         const c = condition as MaterialCondition;
-        return `Material: ${c.name || 'any'}`;
+        const parts: string[] = [];
+        if (c.name) parts.push(`name: ${c.name}`);
+        if (c.minThickness !== undefined) parts.push(`min: ${c.minThickness}mm`);
+        if (c.maxThickness !== undefined) parts.push(`max: ${c.maxThickness}mm`);
+        return `Material${parts.length > 0 ? ' ' + parts.join(', ') : ': any'}`;
       }
-      case 'classification':
-        return `Classification: ${condition.system || '*'}:${condition.code || '*'}`;
+      case 'classification': {
+        const c = condition as ClassificationCondition;
+        const parts: string[] = [];
+        if (c.system) parts.push(`system: ${c.system}`);
+        if (c.code) parts.push(`code: ${c.code}`);
+        if (c.name) parts.push(`name: ${c.name}`);
+        return `Classification${parts.length > 0 ? ' ' + parts.join(', ') : ': any'}`;
+      }
+      case 'attribute': {
+        const c = condition as AttributeCondition;
+        return `${c.attribute} ${c.operator} "${c.value}"`;
+      }
+      case 'quantity': {
+        const c = condition as QuantityCondition;
+        const qtyPath = c.quantitySet ? `${c.quantitySet}.${c.quantityName}` : c.quantityName;
+        return `${qtyPath} ${c.operator} ${c.value}${c.valueTo !== undefined ? ` - ${c.valueTo}` : ''}`;
+      }
+      case 'relationship': {
+        const c = condition as RelationshipCondition;
+        if (c.target) {
+          const parts: string[] = [];
+          if (c.target.type) parts.push(`type: ${c.target.type}`);
+          if (c.target.name) parts.push(`name: ${c.target.name}`);
+          return `${c.relation}${parts.length > 0 ? ' (' + parts.join(', ') + ')' : ''}`;
+        }
+        return `${c.relation}: any`;
+      }
+      case 'or':
+      case 'and':
+      case 'not': {
+        const c = condition as CompositeCondition;
+        return `${c.type.toUpperCase()} (${c.conditions.length} conditions)`;
+      }
       default:
         return condition.type;
     }
@@ -324,14 +488,22 @@ function ConditionChip({ condition, onRemove }: ConditionChipProps) {
   };
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-gray-700 rounded-lg group">
-      {getConditionIcon()}
-      <span className="flex-1 text-sm text-gray-200 truncate">
-        {getConditionText()}
-      </span>
+    <div className="flex items-start gap-2 px-3 py-2.5 bg-gray-700 rounded-lg group">
+      <div className="flex-shrink-0 mt-0.5">
+        {getConditionIcon()}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">
+          {condition.type}
+        </div>
+        <div className="text-sm text-gray-200 break-words">
+          {getConditionText()}
+        </div>
+      </div>
       <button
         onClick={onRemove}
-        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400 transition-opacity"
+        className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400 transition-opacity mt-0.5"
+        title="Remove condition"
       >
         ×
       </button>
@@ -781,11 +953,11 @@ function MatchCountFooter() {
         </div>
       </div>
 
-      {/* View mode buttons */}
+      {/* View mode buttons - click again to deactivate */}
       {hasConditions && matchCount > 0 && (
         <div className="flex gap-2">
           <button
-            onClick={() => setViewMode('highlight')}
+            onClick={() => setViewMode(viewMode === 'highlight' ? 'none' : 'highlight')}
             className={`flex-1 px-2 py-1.5 rounded text-sm ${
               viewMode === 'highlight'
                 ? 'bg-blue-600 text-white'
@@ -795,7 +967,7 @@ function MatchCountFooter() {
             Highlight
           </button>
           <button
-            onClick={() => setViewMode('isolate')}
+            onClick={() => setViewMode(viewMode === 'isolate' ? 'none' : 'isolate')}
             className={`flex-1 px-2 py-1.5 rounded text-sm ${
               viewMode === 'isolate'
                 ? 'bg-blue-600 text-white'
@@ -805,7 +977,7 @@ function MatchCountFooter() {
             Isolate
           </button>
           <button
-            onClick={() => setViewMode('hide')}
+            onClick={() => setViewMode(viewMode === 'hide' ? 'none' : 'hide')}
             className={`flex-1 px-2 py-1.5 rounded text-sm ${
               viewMode === 'hide'
                 ? 'bg-blue-600 text-white'

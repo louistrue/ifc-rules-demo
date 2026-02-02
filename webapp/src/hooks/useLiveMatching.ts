@@ -1,94 +1,67 @@
 /**
- * useLiveMatching - Real-time rule evaluation with debouncing
+ * useLiveMatching - Real-time rule evaluation
  *
- * Evaluates rules against the element index as conditions change,
- * with debouncing to avoid excessive re-evaluation.
+ * Evaluates rules against the element index as conditions change.
+ * Evaluation is immediate for responsive UI when clicking rules.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
-import { useIfcStore, selectIndex, selectViewer } from '../stores/ifc-store';
+import { useEffect, useMemo, useCallback } from 'react';
+import { useIfcStore, selectIndex } from '../stores/ifc-store';
 import { useRuleStore, selectConditions } from '../stores/rule-store';
 import { createRuleEngine } from '../../../src/core/rule-evaluator';
 import type { SelectionRule, RuleEngine } from '../../../src/core/types';
 
-const DEBOUNCE_MS = 100;
-
 export function useLiveMatching() {
   const index = useIfcStore(selectIndex);
-  const viewer = useIfcStore(selectViewer);
   const conditions = useRuleStore(selectConditions);
 
   const setMatchResult = useRuleStore(state => state.setMatchResult);
   const setEvaluating = useRuleStore(state => state.setEvaluating);
   const clearMatches = useRuleStore(state => state.clearMatches);
 
-  const engineRef = useRef<RuleEngine | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Create engine when index changes
-  useEffect(() => {
+  // Create engine when index changes (useMemo so it's part of render cycle)
+  const engine = useMemo<RuleEngine | null>(() => {
     if (index) {
-      engineRef.current = createRuleEngine(index);
-    } else {
-      engineRef.current = null;
+      return createRuleEngine(index);
     }
+    return null;
   }, [index]);
 
-  // Evaluate on condition changes (debounced)
+  // Evaluate when EITHER conditions OR engine changes (ensures re-eval when file loads)
   useEffect(() => {
-    // Clear previous timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-
-    // If no conditions, clear matches
+    // If no conditions, clear matches immediately
     if (conditions.length === 0) {
       clearMatches();
-      viewer?.clearHighlights();
       return;
     }
 
-    // If no engine, skip
-    if (!engineRef.current) {
+    // If no engine (no file loaded), skip but don't clear
+    if (!engine) {
       return;
     }
 
-    // Set evaluating state
+    // Evaluate immediately
     setEvaluating(true);
+    
+    try {
+      const rule: SelectionRule = {
+        id: 'live-rule',
+        name: 'Live Rule',
+        conditions,
+      };
 
-    // Debounced evaluation
-    timeoutRef.current = setTimeout(() => {
-      const engine = engineRef.current;
-      if (!engine) return;
-
-      try {
-        const rule: SelectionRule = {
-          id: 'live-rule',
-          name: 'Live Rule',
-          conditions,
-        };
-
-        const result = engine.select(rule);
-        setMatchResult(result);
-
-        // Update viewer highlights
-        if (viewer && result.expressIds.length > 0) {
-          viewer.highlightMatched(result.expressIds);
-        } else if (viewer) {
-          viewer.clearHighlights();
-        }
-      } catch (error) {
-        console.error('Rule evaluation failed:', error);
-        setEvaluating(false);
-      }
-    }, DEBOUNCE_MS);
-
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, [conditions, viewer, setMatchResult, setEvaluating, clearMatches]);
+      const result = engine.select(rule);
+      console.log('[LiveMatching] Evaluated rule:', {
+        conditions: conditions.length,
+        matched: result.count,
+        time: result.evaluationTime.toFixed(2) + 'ms'
+      });
+      setMatchResult(result);
+    } catch (error) {
+      console.error('Rule evaluation failed:', error);
+      setEvaluating(false);
+    }
+  }, [conditions, engine, setMatchResult, setEvaluating, clearMatches]);
 }
 
 /**

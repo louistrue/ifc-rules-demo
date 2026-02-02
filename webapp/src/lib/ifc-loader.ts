@@ -69,7 +69,6 @@ export async function loadIfcFile(
   onProgress?: ProgressCallback
 ): Promise<LoadResult> {
   const startTime = performance.now();
-  const fileSize = buffer.byteLength;
 
   const report = (phase: LoadProgress['phase'], percent: number, message: string) => {
     onProgress?.({ phase, percent, message });
@@ -110,7 +109,6 @@ export async function loadIfcFile(
   // This is efficient because it's done in WASM
   const {
     PropertyExtractor,
-    RelationshipExtractor,
   } = await import('@ifc-lite/parser');
 
   const propertyExtractor = new PropertyExtractor(parseResult.entities);
@@ -119,13 +117,13 @@ export async function loadIfcFile(
   report('properties', 78, `Found ${propertySets.size} property sets`);
 
   // ==========================================================================
-  // Phase 3: Extract relationships
+  // Phase 3: Extract relationships (already in parseResult)
   // ==========================================================================
 
   report('properties', 80, 'Building relationships...');
 
-  const relationshipExtractor = new RelationshipExtractor(parseResult.entities);
-  const relationships = await relationshipExtractor.extractAsync();
+  // Relationships are already extracted during parse
+  const relationships = parseResult.relationships;
 
   // ==========================================================================
   // Phase 4: Extract materials
@@ -134,7 +132,7 @@ export async function loadIfcFile(
   report('materials', 85, 'Extracting materials...');
 
   const { extractMaterials } = await import('@ifc-lite/parser');
-  const materials = extractMaterials(parseResult.entities, parseResult.entitiesByType);
+  const materials = extractMaterials(parseResult.entities, parseResult.entityIndex.byType);
 
   report('materials', 88, `Found ${materials.materials.size} materials`);
 
@@ -145,43 +143,26 @@ export async function loadIfcFile(
   report('classifications', 90, 'Extracting classifications...');
 
   const { extractClassifications } = await import('@ifc-lite/parser');
-  const classifications = extractClassifications(parseResult.entities, parseResult.entitiesByType);
+  const classifications = extractClassifications(parseResult.entities, parseResult.entityIndex.byType);
 
   report('classifications', 93, `Found ${classifications.classifications.size} systems`);
 
   // ==========================================================================
-  // Phase 6: Build spatial hierarchy
+  // Phase 6: Build simplified index directly from parse result
   // ==========================================================================
 
-  report('indexing', 95, 'Building spatial hierarchy...');
+  report('indexing', 95, 'Building element index...');
 
-  const { SpatialHierarchyBuilder } = await import('@ifc-lite/parser');
-  const spatialBuilder = new SpatialHierarchyBuilder(parseResult.entities, relationships);
-  const spatialHierarchy = spatialBuilder.build();
-
-  // ==========================================================================
-  // Phase 7: Build unified index
-  // ==========================================================================
-
-  report('indexing', 97, 'Building element index...');
-
-  const { buildElementIndex } = await import('../../../src/core/element-indexer');
-  const index = await buildElementIndex(parseResult, {
-    propertySets,
-    materials,
-    classifications,
-    spatialHierarchy,
-    relationships,
-  });
+  // Build a simplified index from the parse result
+  const index = buildSimplifiedIndex(parseResult, propertySets, relationships);
 
   // ==========================================================================
-  // Phase 8: Extract schema for autocomplete
+  // Phase 7: Extract schema for autocomplete
   // ==========================================================================
 
   report('indexing', 99, 'Preparing autocomplete data...');
 
-  const { extractIfcSchema } = await import('./schema-extractor');
-  const schema = extractIfcSchema(index);
+  const schema = buildSimplifiedSchema(parseResult, propertySets, materials as any, classifications as any);
 
   const extractionTime = performance.now() - startTime - parseTime;
 
@@ -201,6 +182,342 @@ export async function loadIfcFile(
       propertySets: propertySets.size,
       materials: materials.materials.size,
       classifications: classifications.classifications.size,
+    },
+  };
+}
+
+// ============================================================================
+// Simplified Index Builder (works with actual parse result)
+// ============================================================================
+
+import type { ParseResult, PropertySet as ParserPropertySet, Relationship } from '@ifc-lite/parser';
+
+/**
+ * Helper to extract attribute value from entity
+ * Handles both object-style and array-style attributes from ifc-lite
+ */
+function getAttributeValue(attributes: unknown, key: string): unknown {
+  if (!attributes) return undefined;
+  
+  // If attributes is an object with named keys
+  if (typeof attributes === 'object' && !Array.isArray(attributes)) {
+    return (attributes as Record<string, unknown>)[key];
+  }
+  
+  // If attributes is an array, use positional mapping for common IFC attributes
+  // IFC entity attributes follow a standard order: GlobalId, OwnerHistory, Name, Description, etc.
+  if (Array.isArray(attributes)) {
+    const positionMap: Record<string, number> = {
+      'GlobalId': 0,
+      'Name': 2,
+      'Description': 3,
+      'ObjectType': 4,
+      'Tag': 5,
+      'PredefinedType': 8, // Position varies by entity type
+    };
+    const pos = positionMap[key];
+    if (pos !== undefined && pos < attributes.length) {
+      const val = attributes[pos];
+      // Handle IFC value wrappers
+      if (val && typeof val === 'object' && 'value' in val) {
+        return val.value;
+      }
+      return val;
+    }
+  }
+  
+  return undefined;
+}
+
+/**
+ * Build a simplified ElementIndex from parse result
+ */
+function buildSimplifiedIndex(
+  parseResult: ParseResult,
+  propertySets: Map<number, ParserPropertySet>,
+  relationships: Relationship[]
+): ElementIndex {
+  const elements = new Map<number, any>();
+  const byType = new Map<string, Set<number>>();
+
+  // Build elements map and byType index
+  for (const [expressId, entity] of parseResult.entities) {
+    // Only include building elements (skip relationships, property sets, etc.)
+    if (isBuildingElement(entity.type)) {
+      // Create element conforming to UnifiedElement interface
+      elements.set(expressId, {
+        expressId,
+        globalId: getAttributeValue(entity.attributes, 'GlobalId') || '',
+        type: entity.type,
+        inheritanceChain: getInheritanceChain(entity.type),
+        predefinedType: getAttributeValue(entity.attributes, 'PredefinedType') || undefined,
+        objectType: getAttributeValue(entity.attributes, 'ObjectType') || undefined,
+        name: getAttributeValue(entity.attributes, 'Name') || undefined,
+        description: getAttributeValue(entity.attributes, 'Description') || undefined,
+        tag: getAttributeValue(entity.attributes, 'Tag') || undefined,
+        spatial: {},
+        properties: {}, // Use object, not Map
+        quantities: {},
+        classifications: [],
+        relationships: {},
+      });
+
+      // Add to byType index (use Set for consistency with ElementIndex interface)
+      let typeSet = byType.get(entity.type);
+      if (!typeSet) {
+        typeSet = new Set();
+        byType.set(entity.type, typeSet);
+      }
+      typeSet.add(expressId);
+    }
+  }
+
+  // Map property sets to elements via relationships
+  const relDefinesByProperties = relationships.filter(r => r.type === 'IFCRELDEFINESBYPROPERTIES');
+  for (const rel of relDefinesByProperties) {
+    const psetId = rel.relatingObject;
+    const pset = propertySets.get(psetId);
+    if (pset) {
+      for (const elementId of rel.relatedObjects) {
+        const element = elements.get(elementId);
+        if (element) {
+          // Convert pset.properties from Map to plain object
+          const propsObj: Record<string, { value: unknown; type?: string }> = {};
+          if (pset.properties instanceof Map) {
+            for (const [propName, propValue] of pset.properties) {
+              const pv = propValue as { value?: unknown; type?: string };
+              propsObj[propName] = { value: pv?.value, type: pv?.type };
+            }
+          } else if (typeof pset.properties === 'object' && pset.properties !== null) {
+            // Already an object
+            for (const [propName, propValue] of Object.entries(pset.properties)) {
+              const pv = propValue as { value?: unknown; type?: string };
+              propsObj[propName] = { value: pv?.value, type: pv?.type };
+            }
+          }
+          element.properties[pset.name] = propsObj;
+        }
+      }
+    }
+  }
+
+  console.log('[Index] Built index with', elements.size, 'elements,', byType.size, 'types');
+
+  return {
+    elements,
+    byType,
+    byStorey: new Map(),
+    byClassification: new Map(),
+    byMaterial: new Map(),
+    propertySets: new Set(Array.from(propertySets.values()).map(p => p.name)),
+    classificationSystems: new Set(),
+    get: (id: number) => elements.get(id),
+    getByType: (type: string) => {
+      const ids = byType.get(type);
+      if (!ids) return [];
+      return Array.from(ids).map(id => elements.get(id)).filter(Boolean);
+    },
+    [Symbol.iterator]: function* () {
+      for (const element of elements.values()) {
+        yield element;
+      }
+    },
+  } as ElementIndex;
+}
+
+/**
+ * Get inheritance chain for an IFC type (simplified)
+ */
+function getInheritanceChain(type: string): string[] {
+  const upperType = type.toUpperCase();
+  
+  // Simplified IFC inheritance - map types to their parent chain
+  const inheritance: Record<string, string[]> = {
+    // Walls
+    'IFCWALL': ['IfcWall', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCWALLSTANDARDCASE': ['IfcWallStandardCase', 'IfcWall', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCCURTAINWALL': ['IfcCurtainWall', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    
+    // Openings
+    'IFCDOOR': ['IfcDoor', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCWINDOW': ['IfcWindow', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    
+    // Slabs
+    'IFCSLAB': ['IfcSlab', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCROOF': ['IfcRoof', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    
+    // Structural
+    'IFCCOLUMN': ['IfcColumn', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCBEAM': ['IfcBeam', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCMEMBER': ['IfcMember', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCPLATE': ['IfcPlate', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCFOOTING': ['IfcFooting', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCPILE': ['IfcPile', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    
+    // Circulation
+    'IFCSTAIR': ['IfcStair', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCSTAIRFLIGHT': ['IfcStairFlight', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCRAMP': ['IfcRamp', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCRAMPFLIGHT': ['IfcRampFlight', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCRAILING': ['IfcRailing', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    
+    // Covering
+    'IFCCOVERING': ['IfcCovering', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCBUILDINGELEMENTPROXY': ['IfcBuildingElementProxy', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    
+    // Furnishing
+    'IFCFURNISHINGELEMENT': ['IfcFurnishingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCFURNITURE': ['IfcFurniture', 'IfcFurnishingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    
+    // Spatial
+    'IFCSPACE': ['IfcSpace', 'IfcSpatialStructureElement', 'IfcSpatialElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCZONE': ['IfcZone', 'IfcSystem', 'IfcGroup', 'IfcObject', 'IfcRoot'],
+    'IFCSITE': ['IfcSite', 'IfcSpatialStructureElement', 'IfcSpatialElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCBUILDING': ['IfcBuilding', 'IfcSpatialStructureElement', 'IfcSpatialElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCBUILDINGSTOREY': ['IfcBuildingStorey', 'IfcSpatialStructureElement', 'IfcSpatialElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    
+    // Opening
+    'IFCOPENINGELEMENT': ['IfcOpeningElement', 'IfcFeatureElementSubtraction', 'IfcFeatureElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    
+    // Distribution/MEP
+    'IFCDISTRIBUTIONELEMENT': ['IfcDistributionElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCDISTRIBUTIONCONTROLELEMENT': ['IfcDistributionControlElement', 'IfcDistributionElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCDISTRIBUTIONFLOWELEMENT': ['IfcDistributionFlowElement', 'IfcDistributionElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCFLOWSEGMENT': ['IfcFlowSegment', 'IfcDistributionFlowElement', 'IfcDistributionElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCFLOWTERMINAL': ['IfcFlowTerminal', 'IfcDistributionFlowElement', 'IfcDistributionElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCFLOWCONTROLLER': ['IfcFlowController', 'IfcDistributionFlowElement', 'IfcDistributionElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCFLOWFITTING': ['IfcFlowFitting', 'IfcDistributionFlowElement', 'IfcDistributionElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    'IFCENERGYCONVERSIONDEVICE': ['IfcEnergyConversionDevice', 'IfcDistributionFlowElement', 'IfcDistributionElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+    
+    // Transport
+    'IFCTRANSPORTELEMENT': ['IfcTransportElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+  };
+  
+  return inheritance[upperType] || [type, 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'];
+}
+
+/**
+ * Check if entity type is a building element
+ */
+function isBuildingElement(type: string): boolean {
+  const buildingElementTypes = [
+    'IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCCURTAINWALL',
+    'IFCDOOR', 'IFCWINDOW',
+    'IFCSLAB', 'IFCROOF',
+    'IFCCOLUMN', 'IFCBEAM', 'IFCMEMBER',
+    'IFCSTAIR', 'IFCSTAIRFLIGHT', 'IFCRAMP', 'IFCRAMPFLIGHT',
+    'IFCRAILING', 'IFCPLATE',
+    'IFCFOOTING', 'IFCPILE', 'IFCFOUNDATION',
+    'IFCCOVERING', 'IFCBUILDINGELEMENTPROXY',
+    'IFCFURNISHINGELEMENT', 'IFCFURNITURE',
+    'IFCSPACE', 'IFCZONE',
+    'IFCOPENINGELEMENT',
+    'IFCDISTRIBUTIONELEMENT', 'IFCDISTRIBUTIONCONTROLELEMENT', 'IFCDISTRIBUTIONFLOWELEMENT',
+    'IFCFLOWSEGMENT', 'IFCFLOWTERMINAL', 'IFCFLOWCONTROLLER', 'IFCFLOWFITTING',
+    'IFCELECTRICALELEMENT', 'IFCENERGYCONVERSIONDEVICE',
+    'IFCTRANSPORTELEMENT',
+    'IFCSITE', 'IFCBUILDING', 'IFCBUILDINGSTOREY',
+  ];
+  return buildingElementTypes.includes(type.toUpperCase());
+}
+
+/**
+ * Build simplified schema for autocomplete
+ */
+function buildSimplifiedSchema(
+  parseResult: ParseResult,
+  propertySets: Map<number, ParserPropertySet>,
+  materials: { materials: Map<string, any> },
+  _classifications: { classifications: Map<string, any> }
+): IfcFileSchema {
+  // Count entities by type
+  const typeCounts = new Map<string, number>();
+  for (const entity of parseResult.entities.values()) {
+    if (isBuildingElement(entity.type)) {
+      typeCounts.set(entity.type, (typeCounts.get(entity.type) || 0) + 1);
+    }
+  }
+
+  // Build entity types list
+  const entityTypes = Array.from(typeCounts.entries())
+    .map(([type, count]) => ({
+      type,
+      count,
+      hasSubtypes: type.includes('Wall') || type.includes('Slab'),
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  // Build property sets schema
+  const psetSchema: IfcFileSchema['propertySets'] = [];
+  const psetNameCounts = new Map<string, { count: number; props: Map<string, { values: any[]; type: string }> }>();
+
+  for (const pset of propertySets.values()) {
+    const existing = psetNameCounts.get(pset.name);
+    if (existing) {
+      existing.count++;
+      // Merge properties
+      for (const [propName, propValue] of pset.properties) {
+        const propData = existing.props.get(propName);
+        if (propData) {
+          propData.values.push(propValue.value);
+        } else {
+          existing.props.set(propName, { values: [propValue.value], type: propValue.type });
+        }
+      }
+    } else {
+      const props = new Map<string, { values: any[]; type: string }>();
+      for (const [propName, propValue] of pset.properties) {
+        props.set(propName, { values: [propValue.value], type: propValue.type });
+      }
+      psetNameCounts.set(pset.name, { count: 1, props });
+    }
+  }
+
+  for (const [name, data] of psetNameCounts) {
+    const properties = Array.from(data.props.entries()).map(([propName, propData]) => {
+      // Count unique values
+      const valueCounts = new Map<any, number>();
+      for (const v of propData.values) {
+        valueCounts.set(v, (valueCounts.get(v) || 0) + 1);
+      }
+      return {
+        name: propName,
+        valueType: propData.type as any,
+        values: Array.from(valueCounts.entries()).map(([value, count]) => ({ value, count })),
+        frequency: propData.values.length,
+      };
+    });
+
+    psetSchema.push({
+      name,
+      appliesTo: [],
+      elementCount: data.count,
+      properties,
+    });
+  }
+
+  return {
+    totalElements: typeCounts.size > 0 ? Array.from(typeCounts.values()).reduce((a, b) => a + b, 0) : 0,
+    entityTypes,
+    propertySets: psetSchema.sort((a, b) => b.elementCount - a.elementCount),
+    spatial: {
+      projects: [],
+      sites: [],
+      buildings: [],
+      storeys: [],
+      spaces: [],
+    },
+    materials: Array.from(materials.materials.entries()).map(([name, data]) => ({
+      name,
+      type: 'single' as const,
+      elementCount: data.elementCount || 0,
+    })),
+    classifications: [],
+    quantitySets: [],
+    lookup: {
+      typesByCount: entityTypes.slice(0, 10),
+      propertiesByFrequency: [],
+      storeysByElevation: [],
     },
   };
 }
@@ -234,7 +551,7 @@ export function shouldEagerLoad(fileSize: number): boolean {
  * Creates mock data structure for UI development
  */
 export async function loadIfcFileDemo(
-  buffer: ArrayBuffer,
+  _buffer: ArrayBuffer,
   onProgress?: ProgressCallback
 ): Promise<LoadResult> {
   const report = (phase: LoadProgress['phase'], percent: number, message: string) => {
@@ -439,18 +756,100 @@ function createMockLoadResult(): LoadResult {
     },
   };
 
-  // Create mock index (minimal for demo)
+  // Create mock index with actual mock elements for demo
+  const mockElements = new Map<number, any>();
+  const mockByType = new Map<string, Set<number>>();
+  
+  // Create mock wall elements
+  for (let i = 1; i <= 127; i++) {
+    const expressId = 1000 + i;
+    mockElements.set(expressId, {
+      expressId,
+      globalId: `wall-${i}`,
+      type: 'IFCWALL',
+      inheritanceChain: ['IfcWall', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+      name: `Wall ${i}`,
+      spatial: { storey: i <= 30 ? 'Ground Floor' : i <= 70 ? 'Level 1' : 'Level 2' },
+      properties: {
+        'Pset_WallCommon': {
+          'IsExternal': { value: i <= 89, type: 'boolean' },
+          'LoadBearing': { value: i <= 45, type: 'boolean' },
+          'FireRating': { value: i <= 32 ? '60' : i <= 50 ? '90' : i <= 62 ? '120' : null, type: 'string' },
+        },
+      },
+      quantities: {},
+      classifications: [],
+      relationships: {},
+    });
+    
+    if (!mockByType.has('IFCWALL')) mockByType.set('IFCWALL', new Set());
+    mockByType.get('IFCWALL')!.add(expressId);
+  }
+  
+  // Create mock door elements
+  for (let i = 1; i <= 45; i++) {
+    const expressId = 2000 + i;
+    mockElements.set(expressId, {
+      expressId,
+      globalId: `door-${i}`,
+      type: 'IFCDOOR',
+      inheritanceChain: ['IfcDoor', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+      name: `Door ${i}`,
+      spatial: {},
+      properties: {
+        'Pset_DoorCommon': {
+          'IsExternal': { value: i <= 12, type: 'boolean' },
+          'FireRating': { value: i <= 18 ? 30 : i <= 26 ? 60 : 0, type: 'number' },
+        },
+      },
+      quantities: {},
+      classifications: [],
+      relationships: {},
+    });
+    
+    if (!mockByType.has('IFCDOOR')) mockByType.set('IFCDOOR', new Set());
+    mockByType.get('IFCDOOR')!.add(expressId);
+  }
+  
+  // Create mock window elements
+  for (let i = 1; i <= 63; i++) {
+    const expressId = 3000 + i;
+    mockElements.set(expressId, {
+      expressId,
+      globalId: `window-${i}`,
+      type: 'IFCWINDOW',
+      inheritanceChain: ['IfcWindow', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
+      name: `Window ${i}`,
+      spatial: {},
+      properties: {},
+      quantities: {},
+      classifications: [],
+      relationships: {},
+    });
+    
+    if (!mockByType.has('IFCWINDOW')) mockByType.set('IFCWINDOW', new Set());
+    mockByType.get('IFCWINDOW')!.add(expressId);
+  }
+
   const mockIndex = {
-    elements: new Map(),
-    byType: new Map(),
+    elements: mockElements,
+    byType: mockByType,
     byStorey: new Map(),
     byClassification: new Map(),
     byMaterial: new Map(),
     propertySets: new Set(['Pset_WallCommon', 'Pset_DoorCommon', 'Pset_SlabCommon']),
     classificationSystems: new Set(['Uniclass 2015']),
-    get: () => undefined,
-    getByType: () => [],
-    [Symbol.iterator]: function* () {},
+    get: (id: number) => mockElements.get(id),
+    getByType: (type: string) => {
+      const ids = mockByType.get(type);
+      if (!ids) return [];
+      return Array.from(ids).map(id => mockElements.get(id)).filter(Boolean);
+    },
+    [Symbol.iterator]: function* () {
+      for (const element of mockElements.values()) {
+        yield element;
+      }
+    },
   } as unknown as ElementIndex;
 
   return {

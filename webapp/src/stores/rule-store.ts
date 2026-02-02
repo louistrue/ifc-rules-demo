@@ -33,8 +33,8 @@ interface RuleBuilderState {
   // Saved rules
   savedRules: SelectionRule[];
 
-  // View modes
-  viewMode: 'highlight' | 'isolate' | 'hide';
+  // View modes ('none' = show all normally)
+  viewMode: 'none' | 'highlight' | 'isolate' | 'hide';
   dimNonMatched: boolean;
 }
 
@@ -49,6 +49,8 @@ interface RuleStoreActions {
 
   // Rule building
   setEntityType: (type: string | string[]) => void;
+  addEntityType: (type: string) => void;
+  removeEntityType: (type: string) => void;
   addCondition: (condition: Condition) => void;
   updateCondition: (index: number, condition: Condition) => void;
   removeCondition: (index: number) => void;
@@ -61,7 +63,7 @@ interface RuleStoreActions {
   clearMatches: () => void;
 
   // View modes
-  setViewMode: (mode: 'highlight' | 'isolate' | 'hide') => void;
+  setViewMode: (mode: 'none' | 'highlight' | 'isolate' | 'hide') => void;
   setDimNonMatched: (dim: boolean) => void;
 
   // Saved rules
@@ -96,7 +98,7 @@ const defaultState: RuleBuilderState = {
   evaluationTime: 0,
   isEvaluating: false,
   savedRules: [],
-  viewMode: 'highlight',
+  viewMode: 'none',
   dimNonMatched: true,
 };
 
@@ -129,8 +131,80 @@ export const useRuleStore = create<RuleStore>()(
         set((s) => {
           // Replace existing type condition or add new one
           const otherConditions = s.conditions.filter(c => c.type !== 'entityType');
-          const newConditions = [typeCondition, ...otherConditions];
+          const newConditions = types.length > 0 ? [typeCondition, ...otherConditions] : otherConditions;
 
+          return {
+            conditions: newConditions,
+            currentRule: { ...s.currentRule, conditions: newConditions },
+            // Auto-enable highlight when building rules
+            viewMode: s.viewMode === 'none' ? 'highlight' : s.viewMode,
+          };
+        });
+      },
+
+      // Add a type to the current selection (for multi-select)
+      addEntityType: (type: string) => {
+        set((s) => {
+          const existingTypeCondition = s.conditions.find(c => c.type === 'entityType');
+          let currentTypes: string[] = [];
+          
+          if (existingTypeCondition && existingTypeCondition.type === 'entityType') {
+            const et = existingTypeCondition.entityType;
+            currentTypes = Array.isArray(et) ? [...et] : (et ? [et] : []);
+          }
+          
+          // Don't add if already exists
+          if (currentTypes.includes(type)) return s;
+          
+          const newTypes = [...currentTypes, type];
+          const typeCondition: Condition = {
+            type: 'entityType',
+            entityType: newTypes.length === 1 ? newTypes[0] : newTypes,
+            includeSubtypes: true,
+          };
+          
+          const otherConditions = s.conditions.filter(c => c.type !== 'entityType');
+          const newConditions = [typeCondition, ...otherConditions];
+          
+          return {
+            conditions: newConditions,
+            currentRule: { ...s.currentRule, conditions: newConditions },
+            viewMode: s.viewMode === 'none' ? 'highlight' : s.viewMode,
+          };
+        });
+      },
+
+      // Remove a single type from the selection
+      removeEntityType: (type: string) => {
+        set((s) => {
+          const existingTypeCondition = s.conditions.find(c => c.type === 'entityType');
+          let currentTypes: string[] = [];
+          
+          if (existingTypeCondition && existingTypeCondition.type === 'entityType') {
+            const et = existingTypeCondition.entityType;
+            currentTypes = Array.isArray(et) ? [...et] : (et ? [et] : []);
+          }
+          
+          const newTypes = currentTypes.filter(t => t !== type);
+          
+          if (newTypes.length === 0) {
+            // No types left, remove the type condition entirely
+            const newConditions = s.conditions.filter(c => c.type !== 'entityType');
+            return {
+              conditions: newConditions,
+              currentRule: { ...s.currentRule, conditions: newConditions },
+            };
+          }
+          
+          const typeCondition: Condition = {
+            type: 'entityType',
+            entityType: newTypes.length === 1 ? newTypes[0] : newTypes,
+            includeSubtypes: true,
+          };
+          
+          const otherConditions = s.conditions.filter(c => c.type !== 'entityType');
+          const newConditions = [typeCondition, ...otherConditions];
+          
           return {
             conditions: newConditions,
             currentRule: { ...s.currentRule, conditions: newConditions },
@@ -144,6 +218,8 @@ export const useRuleStore = create<RuleStore>()(
           return {
             conditions: newConditions,
             currentRule: { ...s.currentRule, conditions: newConditions },
+            // Auto-enable highlight when adding conditions
+            viewMode: s.viewMode === 'none' ? 'highlight' : s.viewMode,
           };
         });
       },
@@ -226,11 +302,13 @@ export const useRuleStore = create<RuleStore>()(
       },
 
       loadRule: (rule) => {
-        set({
+        set((s) => ({
           currentRule: rule,
           conditions: rule.conditions,
           isOpen: true,
-        });
+          // Auto-enable highlight when loading a rule
+          viewMode: s.viewMode === 'none' ? 'highlight' : s.viewMode,
+        }));
       },
 
       deleteRule: (id) => {

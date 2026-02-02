@@ -9,11 +9,12 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { IfcParser } from '@ifc-lite/parser';
 import { Renderer } from '@ifc-lite/renderer';
+import type { RenderOptions } from '@ifc-lite/renderer';
 import { createPlatformBridge } from '@ifc-lite/geometry';
 import { useIfcStore } from '../../stores/ifc-store';
 import { useRuleStore } from '../../stores/rule-store';
+import { loadIfcFile } from '../../lib/ifc-loader';
 
 interface IfcViewerProps {
   className?: string;
@@ -33,11 +34,10 @@ export function IfcViewer({ className = '' }: IfcViewerProps) {
   const {
     matchedIds,
     viewMode,
-    dimNonMatched,
   } = useRuleStore();
 
   const rendererRef = useRef<Renderer | null>(null);
-  const parserRef = useRef<IfcParser | null>(null);
+  const renderOptionsRef = useRef<RenderOptions>({});
 
   // ==========================================================================
   // Initialize Renderer
@@ -79,41 +79,53 @@ export function IfcViewer({ className = '' }: IfcViewerProps) {
       const renderer = rendererRef.current;
       
       try {
-        console.log('Parsing IFC file...');
-        
-        // Parse entities
-        const parser = new IfcParser();
-        parserRef.current = parser;
-        const result = await parser.parse(fileBuffer);
-        console.log('Parse complete:', result.entityCount, 'entities');
-        store.setParseResult(result);
+        // Start geometry streaming in parallel with data extraction
+        const geometryPromise = (async () => {
+          console.log('Processing geometry...');
+          const bridge = await createPlatformBridge();
+          await bridge.init();
+          
+          const decoder = new TextDecoder('utf-8');
+          const ifcContent = decoder.decode(fileBuffer);
+          
+          await bridge.processGeometryStreaming(ifcContent, {
+            onBatch: (batch) => {
+              renderer?.addMeshes(batch.meshes, true);
+              renderer?.render({ isStreaming: true, ...renderOptionsRef.current });
+              console.log(`Loaded batch: ${batch.meshes.length} meshes`);
+            },
+            onComplete: (stats) => {
+              console.log('Geometry complete:', stats);
+              renderer?.fitToView();
+              // Final render with full quality
+              renderer?.render(renderOptionsRef.current);
+            },
+            onError: (error) => {
+              console.error('Geometry processing error:', error);
+            },
+          });
+        })();
 
-        // Process geometry using platform bridge (handles WASM loading)
-        console.log('Processing geometry...');
-        const bridge = await createPlatformBridge();
-        await bridge.init();
+        // Extract properties, materials, classifications for rule evaluation
+        const dataPromise = (async () => {
+          console.log('Extracting IFC data for rules...');
+          store.setIsExtracting(true);
+          
+          const result = await loadIfcFile(fileBuffer, (progress) => {
+            store.setExtractionProgress(progress);
+            console.log(`[${progress.phase}] ${progress.percent}% - ${progress.message}`);
+          });
+          
+          console.log('Data extraction complete:', result.stats);
+          store.setIndex(result.index);
+          store.setSchema(result.schema);
+          store.setIsExtracting(false);
+        })();
+
+        // Wait for both to complete
+        await Promise.all([geometryPromise, dataPromise]);
+        store.setLoading(false);
         
-        // Convert ArrayBuffer to string for the bridge
-        const decoder = new TextDecoder('utf-8');
-        const ifcContent = decoder.decode(fileBuffer);
-        
-        // Stream geometry in batches for progressive rendering
-        await bridge.processGeometryStreaming(ifcContent, {
-          onBatch: (batch) => {
-            renderer?.addMeshes(batch.meshes, true);
-            renderer?.render();
-            console.log(`Loaded batch: ${batch.meshes.length} meshes`);
-          },
-          onComplete: (stats) => {
-            console.log('Geometry complete:', stats);
-            renderer?.fitToView();
-            store.setLoading(false);
-          },
-          onError: (error) => {
-            console.error('Geometry processing error:', error);
-            store.setError(error.message);
-          },
-        });
       } catch (error) {
         console.error('Parse/render error:', error);
         store.setError(
@@ -126,39 +138,67 @@ export function IfcViewer({ className = '' }: IfcViewerProps) {
   }, [fileBuffer]);
 
   // ==========================================================================
-  // Update Highlights when matches change
+  // Update view mode (highlight/isolate/hide) when matches change
   // ==========================================================================
 
   useEffect(() => {
-    if (!rendererRef.current || matchedIds.length === 0) return;
+    if (!rendererRef.current) return;
 
-    // ifc-lite renderer highlighting API
-    const renderer = rendererRef.current as {
-      highlight?: (ids: number[]) => void;
-      isolate?: (ids: number[]) => void;
-      hide?: (ids: number[]) => void;
-      clearHighlights?: () => void;
-      render?: () => void;
-    };
+    const matchedSet = new Set(matchedIds);
 
+    // Build render options based on view mode
     switch (viewMode) {
+      case 'none':
+        // None: show everything normally, no effects
+        renderOptionsRef.current = {
+          selectedIds: undefined,
+          hiddenIds: undefined,
+          isolatedIds: null,
+        };
+        break;
+
       case 'highlight':
-        renderer.highlight?.(matchedIds);
+        // Highlight: show all, but mark matched as selected
+        renderOptionsRef.current = {
+          selectedIds: matchedSet,
+          hiddenIds: undefined,
+          isolatedIds: null,
+        };
         break;
+
       case 'isolate':
-        renderer.isolate?.(matchedIds);
+        // Isolate: only show matched elements
+        if (matchedIds.length > 0) {
+          renderOptionsRef.current = {
+            selectedIds: matchedSet,
+            hiddenIds: undefined,
+            isolatedIds: matchedSet,
+          };
+        } else {
+          renderOptionsRef.current = {
+            selectedIds: undefined,
+            hiddenIds: undefined,
+            isolatedIds: null,
+          };
+        }
         break;
+
       case 'hide':
-        renderer.hide?.(matchedIds);
+        // Hide: hide the matched elements
+        renderOptionsRef.current = {
+          selectedIds: undefined,
+          hiddenIds: matchedSet,
+          isolatedIds: null,
+        };
         break;
     }
-    renderer.render?.();
 
-    return () => {
-      renderer.clearHighlights?.();
-      renderer.render?.();
-    };
-  }, [matchedIds, viewMode, dimNonMatched]);
+    // Trigger a re-render with new options immediately
+    rendererRef.current.render(renderOptionsRef.current);
+    
+    console.log(`View mode: ${viewMode}, matched: ${matchedIds.length}`);
+
+  }, [matchedIds, viewMode]); // Only depend on matchedIds and viewMode for immediate updates
 
   // ==========================================================================
   // File Drop Handlers
