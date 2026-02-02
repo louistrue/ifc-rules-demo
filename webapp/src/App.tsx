@@ -14,6 +14,7 @@ import React from 'react';
 import { IfcViewer } from './components/viewer/IfcViewer';
 import { RuleBuilderPanel } from './components/rule-builder/RuleBuilderPanel';
 import { QuickActionBar } from './components/shared/QuickActionBar';
+import { LibraryPanel } from './components/shared/LibraryPanel';
 import { useLiveMatching } from './hooks/useLiveMatching';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
@@ -29,6 +30,9 @@ export function App() {
 
       {/* Floating Rule Builder Panel */}
       <RuleBuilderPanel />
+
+      {/* Rule Library Panel */}
+      <LibraryPanel />
 
       {/* Bottom Quick Action Bar */}
       <QuickActionBar />

@@ -16,6 +16,7 @@ import type { SelectionRule, Condition, SelectionResult } from '../../../src/cor
 interface RuleBuilderState {
   // UI state
   isOpen: boolean;
+  isLibraryOpen: boolean;
   isPinned: boolean;
   position: { x: number; y: number };
 
@@ -42,6 +43,7 @@ interface RuleStoreActions {
   openPanel: () => void;
   closePanel: () => void;
   togglePanel: () => void;
+  toggleLibrary: () => void;
   setPinned: (pinned: boolean) => void;
   setPosition: (position: { x: number; y: number }) => void;
 
@@ -84,6 +86,7 @@ const defaultRule: SelectionRule = {
 
 const defaultState: RuleBuilderState = {
   isOpen: false,
+  isLibraryOpen: false,
   isPinned: false,
   position: { x: 20, y: 100 },
   currentRule: defaultRule,
@@ -110,6 +113,7 @@ export const useRuleStore = create<RuleStore>()(
       openPanel: () => set({ isOpen: true }),
       closePanel: () => set({ isOpen: false }),
       togglePanel: () => set((s) => ({ isOpen: !s.isOpen })),
+      toggleLibrary: () => set((s) => ({ isLibraryOpen: !s.isLibraryOpen })),
       setPinned: (isPinned) => set({ isPinned }),
       setPosition: (position) => set({ position }),
 

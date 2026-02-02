@@ -15,7 +15,9 @@ export function QuickActionBar() {
   const isLoading = useIfcStore(state => state.isLoading);
 
   const isOpen = useRuleStore(state => state.isOpen);
+  const isLibraryOpen = useRuleStore(state => state.isLibraryOpen);
   const togglePanel = useRuleStore(state => state.togglePanel);
+  const toggleLibrary = useRuleStore(state => state.toggleLibrary);
   const matchCount = useRuleStore(state => state.matchCount);
   const savedRules = useRuleStore(state => state.savedRules);
 
@@ -101,7 +103,12 @@ export function QuickActionBar() {
 
         {/* Saved Rules */}
         <button
-          className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors"
+          onClick={toggleLibrary}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-colors ${
+            isLibraryOpen
+              ? 'bg-blue-600 text-white'
+              : 'text-gray-300 hover:text-white hover:bg-gray-700'
+          }`}
           title="Saved Rules"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -109,7 +116,7 @@ export function QuickActionBar() {
           </svg>
           <span className="hidden sm:inline">Library</span>
           {savedRules.length > 0 && (
-            <span className="px-1.5 py-0.5 bg-gray-600 rounded-full text-xs">
+            <span className={`px-1.5 py-0.5 rounded-full text-xs ${isLibraryOpen ? 'bg-blue-500' : 'bg-gray-600'}`}>
               {savedRules.length}
             </span>
           )}
