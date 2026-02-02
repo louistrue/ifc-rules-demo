@@ -252,7 +252,9 @@ export function IfcViewer({ className = '' }: IfcViewerProps) {
       {!file && !isLoading && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center text-gray-400">
-            <div className="text-6xl mb-4">📦</div>
+            <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
             <div className="text-xl mb-2">Drop an IFC file here</div>
             <div className="text-sm">or click to browse</div>
           </div>
