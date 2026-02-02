@@ -1,0 +1,175 @@
+{
+  "name": "Fire Safety Rules",
+  "description": "Rules for selecting fire-safety related elements",
+  "rules": [
+    {
+      "id": "fire-rated-doors",
+      "name": "Fire-Rated Doors",
+      "description": "Doors with any fire rating",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": "IfcDoor"
+        },
+        {
+          "type": "property",
+          "propertySet": "Pset_DoorCommon",
+          "propertyName": "FireRating",
+          "operator": "exists"
+        }
+      ]
+    },
+    {
+      "id": "fire-doors-30min",
+      "name": "Fire Doors (30+ min)",
+      "description": "Doors with 30 minute or higher fire rating",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": "IfcDoor"
+        },
+        {
+          "type": "property",
+          "propertySet": "Pset_DoorCommon",
+          "propertyName": "FireRating",
+          "operator": "greaterOrEqual",
+          "value": 30
+        }
+      ]
+    },
+    {
+      "id": "fire-doors-60min",
+      "name": "Fire Doors (60+ min)",
+      "description": "Doors with 60 minute or higher fire rating",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": "IfcDoor"
+        },
+        {
+          "type": "property",
+          "propertySet": "Pset_DoorCommon",
+          "propertyName": "FireRating",
+          "operator": "greaterOrEqual",
+          "value": 60
+        }
+      ]
+    },
+    {
+      "id": "fire-rated-walls",
+      "name": "Fire-Rated Walls",
+      "description": "Walls with fire rating property",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": "IfcWall"
+        },
+        {
+          "type": "property",
+          "propertySet": "Pset_WallCommon",
+          "propertyName": "FireRating",
+          "operator": "exists"
+        }
+      ]
+    },
+    {
+      "id": "fire-walls-compartment",
+      "name": "Fire Compartment Walls",
+      "description": "Walls with 90+ minute fire rating (compartmentation)",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": "IfcWall"
+        },
+        {
+          "type": "property",
+          "propertySet": "Pset_WallCommon",
+          "propertyName": "FireRating",
+          "operator": "greaterOrEqual",
+          "value": 90
+        }
+      ]
+    },
+    {
+      "id": "emergency-exits",
+      "name": "Emergency Exit Doors",
+      "description": "Doors named as emergency or fire exits",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": "IfcDoor"
+        },
+        {
+          "type": "or",
+          "conditions": [
+            {
+              "type": "attribute",
+              "attribute": "name",
+              "operator": "contains",
+              "value": "Emergency"
+            },
+            {
+              "type": "attribute",
+              "attribute": "name",
+              "operator": "contains",
+              "value": "Fire Exit"
+            },
+            {
+              "type": "attribute",
+              "attribute": "name",
+              "operator": "contains",
+              "value": "Escape"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fire-alarm-devices",
+      "name": "Fire Alarm Devices",
+      "description": "Fire detection and alarm equipment",
+      "conditions": [
+        {
+          "type": "or",
+          "conditions": [
+            {
+              "type": "entityType",
+              "entityType": "IfcFireSuppressionTerminal"
+            },
+            {
+              "type": "entityType",
+              "entityType": "IfcAlarm"
+            },
+            {
+              "type": "entityType",
+              "entityType": "IfcSensor"
+            }
+          ]
+        },
+        {
+          "type": "or",
+          "conditions": [
+            {
+              "type": "attribute",
+              "attribute": "name",
+              "operator": "contains",
+              "value": "Fire"
+            },
+            {
+              "type": "attribute",
+              "attribute": "name",
+              "operator": "contains",
+              "value": "Smoke"
+            },
+            {
+              "type": "attribute",
+              "attribute": "objectType",
+              "operator": "contains",
+              "value": "Fire"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,151 @@
+{
+  "name": "Structural Elements Rules",
+  "description": "Pre-built rules for selecting structural building elements",
+  "rules": [
+    {
+      "id": "all-walls",
+      "name": "All Walls",
+      "description": "Select all wall elements including curtain walls",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": ["IfcWall", "IfcWallStandardCase", "IfcCurtainWall"],
+          "includeSubtypes": true
+        }
+      ]
+    },
+    {
+      "id": "external-walls",
+      "name": "External Walls",
+      "description": "Walls marked as external in Pset_WallCommon",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": "IfcWall"
+        },
+        {
+          "type": "property",
+          "propertySet": "Pset_WallCommon",
+          "propertyName": "IsExternal",
+          "operator": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "load-bearing-walls",
+      "name": "Load-Bearing Walls",
+      "description": "Structural walls that are load-bearing",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": "IfcWall"
+        },
+        {
+          "type": "property",
+          "propertySet": "Pset_WallCommon",
+          "propertyName": "LoadBearing",
+          "operator": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "all-columns",
+      "name": "All Columns",
+      "description": "Select all column elements",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": "IfcColumn",
+          "includeSubtypes": true
+        }
+      ]
+    },
+    {
+      "id": "all-beams",
+      "name": "All Beams",
+      "description": "Select all beam elements",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": "IfcBeam",
+          "includeSubtypes": true
+        }
+      ]
+    },
+    {
+      "id": "all-slabs",
+      "name": "All Slabs",
+      "description": "Select all slab/floor elements",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": "IfcSlab",
+          "includeSubtypes": true
+        }
+      ]
+    },
+    {
+      "id": "floor-slabs",
+      "name": "Floor Slabs",
+      "description": "Slabs with predefined type FLOOR",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": "IfcSlab",
+          "predefinedType": "FLOOR"
+        }
+      ]
+    },
+    {
+      "id": "roof-slabs",
+      "name": "Roof Slabs",
+      "description": "Slabs with predefined type ROOF",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": "IfcSlab",
+          "predefinedType": "ROOF"
+        }
+      ]
+    },
+    {
+      "id": "concrete-elements",
+      "name": "Concrete Structural Elements",
+      "description": "Load-bearing elements made of concrete",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": ["IfcWall", "IfcColumn", "IfcBeam", "IfcSlab"]
+        },
+        {
+          "type": "material",
+          "name": "*Concrete*"
+        },
+        {
+          "type": "property",
+          "propertySet": "*",
+          "propertyName": "LoadBearing",
+          "operator": "equals",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "steel-elements",
+      "name": "Steel Structural Elements",
+      "description": "Structural elements made of steel",
+      "conditions": [
+        {
+          "type": "entityType",
+          "entityType": ["IfcColumn", "IfcBeam", "IfcMember"]
+        },
+        {
+          "type": "material",
+          "name": "*Steel*"
+        }
+      ]
+    }
+  ]
+}
