@@ -315,8 +315,8 @@ function TypeSelector() {
                       key={type}
                       onClick={() => handleTypeToggle(type)}
                       className={`w-full px-4 py-3 flex items-center gap-3 text-sm border-b border-gray-700/50 last:border-0 transition-colors ${isSelected
-                          ? 'bg-blue-600/20 text-white'
-                          : 'text-gray-200 hover:bg-gray-700'
+                        ? 'bg-blue-600/20 text-white'
+                        : 'text-gray-200 hover:bg-gray-700'
                         }`}
                     >
                       {/* Checkbox indicator */}
@@ -615,10 +615,16 @@ function PropertyConditionEditor({ onClose }: { onClose: () => void }) {
   const [value, setValue] = useState('');
 
   // Get property sets for current type
+  // Fall back to all property sets if filtering returns empty (appliesTo may not be populated)
   const selectedTypes = Array.isArray(currentType) ? currentType : (currentType ? [currentType] : []);
-  const availablePsets = schema && selectedTypes.length > 0
-    ? getPropertySetsForType(schema, selectedTypes)
-    : schema?.propertySets || [];
+  let availablePsets = schema?.propertySets || [];
+  if (selectedTypes.length > 0) {
+    const filtered = getPropertySetsForType(schema!, selectedTypes);
+    if (filtered.length > 0) {
+      availablePsets = filtered;
+    }
+    // If filtered is empty, show all psets as fallback
+  }
 
   // Get properties for selected pset
   const selectedPset = availablePsets.find(p => p.name === pset);
@@ -657,18 +663,24 @@ function PropertyConditionEditor({ onClose }: { onClose: () => void }) {
       {/* Property Set */}
       <div>
         <label className="text-xs text-gray-400">Property Set</label>
-        <select
-          value={pset}
-          onChange={(e) => { setPset(e.target.value); setProp(''); }}
-          className="w-full mt-1 px-2 py-1.5 bg-gray-800 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-        >
-          <option value="">Select property set...</option>
-          {availablePsets.map(p => (
-            <option key={p.name} value={p.name}>
-              {p.name} ({p.elementCount})
-            </option>
-          ))}
-        </select>
+        {availablePsets.length === 0 ? (
+          <div className="text-gray-500 text-sm py-3 text-center bg-gray-800 rounded mt-1">
+            No property sets found in model
+          </div>
+        ) : (
+          <select
+            value={pset}
+            onChange={(e) => { setPset(e.target.value); setProp(''); }}
+            className="w-full mt-1 px-2 py-1.5 bg-gray-800 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="">Select property set...</option>
+            {availablePsets.map(p => (
+              <option key={p.name} value={p.name}>
+                {p.name} ({p.elementCount})
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Property */}
@@ -779,21 +791,27 @@ function SpatialConditionEditor({ onClose }: { onClose: () => void }) {
       <div>
         <label className="text-xs text-gray-400">Storey</label>
         <div className="mt-1 space-y-1 max-h-40 overflow-y-auto">
-          {storeys.map(storey => (
-            <button
-              key={storey.name}
-              onClick={() => setSelectedStorey(storey.name)}
-              className={`w-full px-3 py-2 rounded text-left text-sm flex items-center justify-between ${selectedStorey === storey.name
+          {storeys.length === 0 ? (
+            <div className="text-gray-500 text-sm py-3 text-center">
+              No storeys found in model
+            </div>
+          ) : (
+            storeys.map(storey => (
+              <button
+                key={storey.name}
+                onClick={() => setSelectedStorey(storey.name)}
+                className={`w-full px-3 py-2 rounded text-left text-sm flex items-center justify-between ${selectedStorey === storey.name
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-800 text-gray-200 hover:bg-gray-600'
-                }`}
-            >
-              <span>{storey.name}</span>
-              <span className="text-gray-400 text-xs">
-                {storey.elevation.toFixed(1)}m • {storey.elementCount} elements
-              </span>
-            </button>
-          ))}
+                  }`}
+              >
+                <span>{storey.name}</span>
+                <span className="text-gray-400 text-xs">
+                  {storey.elevation.toFixed(1)}m • {storey.elementCount} elements
+                </span>
+              </button>
+            ))
+          )}
         </div>
       </div>
 
@@ -861,21 +879,27 @@ function MaterialConditionEditor({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="space-y-1 max-h-40 overflow-y-auto">
-        {filteredMaterials.map(mat => (
-          <button
-            key={mat.name}
-            onClick={() => setSelectedMaterial(mat.name)}
-            className={`w-full px-3 py-2 rounded text-left text-sm flex items-center justify-between ${selectedMaterial === mat.name
+        {filteredMaterials.length === 0 ? (
+          <div className="text-gray-500 text-sm py-3 text-center">
+            {materials.length === 0 ? 'No materials found in model' : 'No matching materials'}
+          </div>
+        ) : (
+          filteredMaterials.map(mat => (
+            <button
+              key={mat.name}
+              onClick={() => setSelectedMaterial(mat.name)}
+              className={`w-full px-3 py-2 rounded text-left text-sm flex items-center justify-between ${selectedMaterial === mat.name
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-800 text-gray-200 hover:bg-gray-600'
-              }`}
-          >
-            <span>{mat.name}</span>
-            <span className="text-gray-400 text-xs">
-              {mat.elementCount} elements
-            </span>
-          </button>
-        ))}
+                }`}
+            >
+              <span>{mat.name}</span>
+              <span className="text-gray-400 text-xs">
+                {mat.elementCount} elements
+              </span>
+            </button>
+          ))
+        )}
       </div>
 
       <div className="flex justify-end gap-2 pt-2">
@@ -955,8 +979,8 @@ function MatchCountFooter() {
           <button
             onClick={() => setViewMode(viewMode === 'highlight' ? 'none' : 'highlight')}
             className={`flex-1 px-2 py-1.5 rounded text-sm ${viewMode === 'highlight'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
           >
             Highlight
@@ -964,8 +988,8 @@ function MatchCountFooter() {
           <button
             onClick={() => setViewMode(viewMode === 'isolate' ? 'none' : 'isolate')}
             className={`flex-1 px-2 py-1.5 rounded text-sm ${viewMode === 'isolate'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
           >
             Isolate
@@ -973,8 +997,8 @@ function MatchCountFooter() {
           <button
             onClick={() => setViewMode(viewMode === 'hide' ? 'none' : 'hide')}
             className={`flex-1 px-2 py-1.5 rounded text-sm ${viewMode === 'hide'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
           >
             Hide

@@ -198,12 +198,12 @@ import type { ParseResult, PropertySet as ParserPropertySet, Relationship } from
  */
 function getAttributeValue(attributes: unknown, key: string): unknown {
   if (!attributes) return undefined;
-  
+
   // If attributes is an object with named keys
   if (typeof attributes === 'object' && !Array.isArray(attributes)) {
     return (attributes as Record<string, unknown>)[key];
   }
-  
+
   // If attributes is an array, use positional mapping for common IFC attributes
   // IFC entity attributes follow a standard order: GlobalId, OwnerHistory, Name, Description, etc.
   if (Array.isArray(attributes)) {
@@ -225,7 +225,7 @@ function getAttributeValue(attributes: unknown, key: string): unknown {
       return val;
     }
   }
-  
+
   return undefined;
 }
 
@@ -330,22 +330,22 @@ function buildSimplifiedIndex(
  */
 function getInheritanceChain(type: string): string[] {
   const upperType = type.toUpperCase();
-  
+
   // Simplified IFC inheritance - map types to their parent chain
   const inheritance: Record<string, string[]> = {
     // Walls
     'IFCWALL': ['IfcWall', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCWALLSTANDARDCASE': ['IfcWallStandardCase', 'IfcWall', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCCURTAINWALL': ['IfcCurtainWall', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
-    
+
     // Openings
     'IFCDOOR': ['IfcDoor', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCWINDOW': ['IfcWindow', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
-    
+
     // Slabs
     'IFCSLAB': ['IfcSlab', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCROOF': ['IfcRoof', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
-    
+
     // Structural
     'IFCCOLUMN': ['IfcColumn', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCBEAM': ['IfcBeam', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
@@ -353,32 +353,32 @@ function getInheritanceChain(type: string): string[] {
     'IFCPLATE': ['IfcPlate', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCFOOTING': ['IfcFooting', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCPILE': ['IfcPile', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
-    
+
     // Circulation
     'IFCSTAIR': ['IfcStair', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCSTAIRFLIGHT': ['IfcStairFlight', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCRAMP': ['IfcRamp', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCRAMPFLIGHT': ['IfcRampFlight', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCRAILING': ['IfcRailing', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
-    
+
     // Covering
     'IFCCOVERING': ['IfcCovering', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCBUILDINGELEMENTPROXY': ['IfcBuildingElementProxy', 'IfcBuildingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
-    
+
     // Furnishing
     'IFCFURNISHINGELEMENT': ['IfcFurnishingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCFURNITURE': ['IfcFurniture', 'IfcFurnishingElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
-    
+
     // Spatial
     'IFCSPACE': ['IfcSpace', 'IfcSpatialStructureElement', 'IfcSpatialElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCZONE': ['IfcZone', 'IfcSystem', 'IfcGroup', 'IfcObject', 'IfcRoot'],
     'IFCSITE': ['IfcSite', 'IfcSpatialStructureElement', 'IfcSpatialElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCBUILDING': ['IfcBuilding', 'IfcSpatialStructureElement', 'IfcSpatialElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCBUILDINGSTOREY': ['IfcBuildingStorey', 'IfcSpatialStructureElement', 'IfcSpatialElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
-    
+
     // Opening
     'IFCOPENINGELEMENT': ['IfcOpeningElement', 'IfcFeatureElementSubtraction', 'IfcFeatureElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
-    
+
     // Distribution/MEP
     'IFCDISTRIBUTIONELEMENT': ['IfcDistributionElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCDISTRIBUTIONCONTROLELEMENT': ['IfcDistributionControlElement', 'IfcDistributionElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
@@ -388,11 +388,11 @@ function getInheritanceChain(type: string): string[] {
     'IFCFLOWCONTROLLER': ['IfcFlowController', 'IfcDistributionFlowElement', 'IfcDistributionElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCFLOWFITTING': ['IfcFlowFitting', 'IfcDistributionFlowElement', 'IfcDistributionElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
     'IFCENERGYCONVERSIONDEVICE': ['IfcEnergyConversionDevice', 'IfcDistributionFlowElement', 'IfcDistributionElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
-    
+
     // Transport
     'IFCTRANSPORTELEMENT': ['IfcTransportElement', 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'],
   };
-  
+
   return inheritance[upperType] || [type, 'IfcElement', 'IfcProduct', 'IfcObject', 'IfcRoot'];
 }
 
@@ -496,6 +496,59 @@ function buildSimplifiedSchema(
     });
   }
 
+  // ==========================================================================
+  // Extract storeys from spatial structure
+  // ==========================================================================
+
+  const storeys: Array<{ name: string; elevation: number; elementCount: number }> = [];
+  const storeyElementCounts = new Map<number, number>(); // storeyId -> element count
+
+  // Find all IfcBuildingStorey entities
+  const storeyEntities: Array<{ id: number; name: string; elevation: number }> = [];
+  for (const [expressId, entity] of parseResult.entities) {
+    if (entity.type.toUpperCase() === 'IFCBUILDINGSTOREY') {
+      const name = getAttributeValue(entity.attributes, 'Name') as string || `Storey ${expressId}`;
+      // Elevation is typically at position 9 for IfcBuildingStorey
+      let elevation = 0;
+      if (Array.isArray(entity.attributes) && entity.attributes.length > 9) {
+        const elevVal = entity.attributes[9];
+        if (typeof elevVal === 'number') {
+          elevation = elevVal;
+        } else if (elevVal && typeof elevVal === 'object' && 'value' in elevVal) {
+          elevation = Number(elevVal.value) || 0;
+        }
+      }
+      storeyEntities.push({ id: expressId, name, elevation });
+      storeyElementCounts.set(expressId, 0);
+    }
+  }
+
+  // Count elements per storey via IfcRelContainedInSpatialStructure
+  const containmentRels = parseResult.relationships.filter(
+    r => r.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE'
+  );
+
+  for (const rel of containmentRels) {
+    const storeyId = rel.relatingObject;
+    if (storeyElementCounts.has(storeyId)) {
+      const currentCount = storeyElementCounts.get(storeyId) || 0;
+      storeyElementCounts.set(storeyId, currentCount + rel.relatedObjects.length);
+    }
+  }
+
+  // Build storeys array sorted by elevation
+  for (const storey of storeyEntities) {
+    storeys.push({
+      name: storey.name,
+      elevation: storey.elevation,
+      elementCount: storeyElementCounts.get(storey.id) || 0,
+    });
+  }
+  storeys.sort((a, b) => a.elevation - b.elevation);
+
+  console.log('[Schema] Found', storeys.length, 'storeys:', storeys.map(s => s.name));
+  console.log('[Schema] Found', psetSchema.length, 'property sets');
+
   return {
     totalElements: typeCounts.size > 0 ? Array.from(typeCounts.values()).reduce((a, b) => a + b, 0) : 0,
     entityTypes,
@@ -504,7 +557,7 @@ function buildSimplifiedSchema(
       projects: [],
       sites: [],
       buildings: [],
-      storeys: [],
+      storeys,
       spaces: [],
     },
     materials: Array.from(materials.materials.entries()).map(([name, data]) => ({
@@ -517,7 +570,7 @@ function buildSimplifiedSchema(
     lookup: {
       typesByCount: entityTypes.slice(0, 10),
       propertiesByFrequency: [],
-      storeysByElevation: [],
+      storeysByElevation: storeys.map(s => ({ name: s.name, elevation: s.elevation })),
     },
   };
 }
@@ -759,7 +812,7 @@ function createMockLoadResult(): LoadResult {
   // Create mock index with actual mock elements for demo
   const mockElements = new Map<number, any>();
   const mockByType = new Map<string, Set<number>>();
-  
+
   // Create mock wall elements
   for (let i = 1; i <= 127; i++) {
     const expressId = 1000 + i;
@@ -781,11 +834,11 @@ function createMockLoadResult(): LoadResult {
       classifications: [],
       relationships: {},
     });
-    
+
     if (!mockByType.has('IFCWALL')) mockByType.set('IFCWALL', new Set());
     mockByType.get('IFCWALL')!.add(expressId);
   }
-  
+
   // Create mock door elements
   for (let i = 1; i <= 45; i++) {
     const expressId = 2000 + i;
@@ -806,11 +859,11 @@ function createMockLoadResult(): LoadResult {
       classifications: [],
       relationships: {},
     });
-    
+
     if (!mockByType.has('IFCDOOR')) mockByType.set('IFCDOOR', new Set());
     mockByType.get('IFCDOOR')!.add(expressId);
   }
-  
+
   // Create mock window elements
   for (let i = 1; i <= 63; i++) {
     const expressId = 3000 + i;
@@ -826,7 +879,7 @@ function createMockLoadResult(): LoadResult {
       classifications: [],
       relationships: {},
     });
-    
+
     if (!mockByType.has('IFCWINDOW')) mockByType.set('IFCWINDOW', new Set());
     mockByType.get('IFCWINDOW')!.add(expressId);
   }
