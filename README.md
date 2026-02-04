@@ -318,4 +318,4 @@ viewer.setColor(result.expressIds, 0xff0000);
 
 ## License
 
-MIT
+MPL-2.0
