@@ -10,7 +10,6 @@
  * - Keyboard shortcuts for power users
  */
 
-import React from 'react';
 import { IfcViewer } from './components/viewer/IfcViewer';
 import { RuleBuilderPanel } from './components/rule-builder/RuleBuilderPanel';
 import { QuickActionBar } from './components/shared/QuickActionBar';

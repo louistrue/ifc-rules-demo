@@ -83,27 +83,16 @@ function evaluateTypeCondition(element: UnifiedElement, condition: TypeCondition
 
   const includeSubtypes = condition.includeSubtypes !== false; // default true
 
-  // Debug logging for first element
-  if (!evaluateTypeCondition._logged) {
-    evaluateTypeCondition._logged = true;
-    console.log('[TypeCondition] First element:', {
-      elementType: element.type,
-      inheritanceChain: element.inheritanceChain,
-      conditionTypes: types,
-      includeSubtypes,
-    });
-  }
-
   for (const type of types) {
     // Normalize type for comparison (IFC types can be UPPERCASE or MixedCase)
     const normalizedType = type.toUpperCase();
-    
+
     if (includeSubtypes) {
       // Check if element's type or any of its supertypes match (case-insensitive)
       const matchesChain = element.inheritanceChain?.some(
         chainType => chainType.toUpperCase() === normalizedType
       ) ?? false;
-      
+
       if (matchesChain) {
         // Check predefinedType if specified
         if (condition.predefinedType) {
@@ -147,7 +136,7 @@ function evaluatePropertyCondition(element: UnifiedElement, condition: PropertyC
   const propValue = findPropertyValue(element.properties, propertySet, propertyName);
 
   if (propValue === undefined) {
-    return operator === 'notEquals' || operator === 'notExists';
+    return operator === 'notEquals' || operator === 'notExists' as string;
   }
 
   // Extract the actual value from PropertyValue object
@@ -400,7 +389,7 @@ function evaluateQuantityCondition(element: UnifiedElement, condition: QuantityC
  * Evaluate relationship condition
  */
 function evaluateRelationshipCondition(element: UnifiedElement, condition: RelationshipCondition): boolean {
-  const { relation, target } = condition;
+  const { relation } = condition;
 
   // For now, just check if the relationship exists
   // Full implementation would need access to the index to resolve targets
@@ -414,7 +403,7 @@ function evaluateRelationshipCondition(element: UnifiedElement, condition: Relat
 
     case 'connectedTo':
       return element.relationships.connectedTo !== undefined &&
-             element.relationships.connectedTo.length > 0;
+        element.relationships.connectedTo.length > 0;
 
     case 'hasType':
       return element.relationships.hasType !== undefined;
@@ -522,8 +511,8 @@ function validateRule(rule: SelectionRule, index: ElementIndex): ValidationResul
     switch (condition.type) {
       case 'property':
         if (condition.propertySet !== '*' &&
-            !condition.propertySet.includes('*') &&
-            !index.propertySets.has(condition.propertySet)) {
+          !condition.propertySet.includes('*') &&
+          !index.propertySets.has(condition.propertySet)) {
           warnings.push({
             path: `${path}.propertySet`,
             message: `Property set "${condition.propertySet}" not found in model`,
@@ -534,8 +523,8 @@ function validateRule(rule: SelectionRule, index: ElementIndex): ValidationResul
 
       case 'classification':
         if (condition.system && condition.system !== '*' &&
-            !condition.system.includes('*') &&
-            !index.classificationSystems.has(condition.system)) {
+          !condition.system.includes('*') &&
+          !index.classificationSystems.has(condition.system)) {
           warnings.push({
             path: `${path}.system`,
             message: `Classification system "${condition.system}" not found in model`,

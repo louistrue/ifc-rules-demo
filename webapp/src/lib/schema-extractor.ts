@@ -7,7 +7,7 @@
  * The extracted schema powers the autocomplete and validation in the rule builder UI.
  */
 
-import type { ElementIndex, UnifiedElement } from '../../../src/core/types';
+import type { ElementIndex } from '../../../src/core/types';
 
 // ============================================================================
 // Schema Types - What exists in the loaded file

@@ -158,7 +158,7 @@ export function evaluateOperator(
 
   // Handle null value
   if (value === null || value === undefined) {
-    return operator === 'notEquals' || operator === 'notExists';
+    return operator === 'notEquals';
   }
 
   // Handle comparison based on value type

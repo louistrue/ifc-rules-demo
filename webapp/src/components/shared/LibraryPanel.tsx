@@ -2,7 +2,7 @@
  * LibraryPanel - Shows saved rules with ability to load, edit, or delete
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useRuleStore } from '../../stores/rule-store';
 import type { SelectionRule } from '../../../../src/core/types';
 
@@ -129,7 +129,7 @@ export function LibraryPanel() {
   const deleteRule = useRuleStore(state => state.deleteRule);
   const exportRules = useRuleStore(state => state.exportRules);
   const importRules = useRuleStore(state => state.importRules);
-  
+
   const [activeTab, setActiveTab] = useState<'samples' | 'saved'>('samples');
 
   // Toggle rule: load if different, clear if same
@@ -187,21 +187,19 @@ export function LibraryPanel() {
       <div className="flex border-b border-gray-700">
         <button
           onClick={() => setActiveTab('samples')}
-          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === 'samples'
+          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'samples'
               ? 'text-white border-b-2 border-blue-500'
               : 'text-gray-400 hover:text-white'
-          }`}
+            }`}
         >
           Samples
         </button>
         <button
           onClick={() => setActiveTab('saved')}
-          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === 'saved'
+          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'saved'
               ? 'text-white border-b-2 border-blue-500'
               : 'text-gray-400 hover:text-white'
-          }`}
+            }`}
         >
           My Rules {savedRules.length > 0 && `(${savedRules.length})`}
         </button>
@@ -224,19 +222,17 @@ export function LibraryPanel() {
                       <button
                         key={rule.id}
                         onClick={() => handleRuleClick(rule)}
-                        className={`w-full text-left rounded-lg p-3 transition-colors group ${
-                          isActive
+                        className={`w-full text-left rounded-lg p-3 transition-colors group ${isActive
                             ? 'bg-blue-600 hover:bg-blue-500'
                             : 'bg-gray-700/30 hover:bg-gray-700'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-white font-medium text-sm">{rule.name}</span>
-                          <span className={`text-xs transition-opacity ${
-                            isActive
+                          <span className={`text-xs transition-opacity ${isActive
                               ? 'text-white opacity-100'
                               : 'text-blue-400 opacity-0 group-hover:opacity-100'
-                          }`}>
+                            }`}>
                             {isActive ? '✓ Active' : 'Load →'}
                           </span>
                         </div>
@@ -267,22 +263,20 @@ export function LibraryPanel() {
                 return (
                   <div
                     key={rule.id}
-                    className={`rounded-lg p-3 transition-colors ${
-                      isActive
+                    className={`rounded-lg p-3 transition-colors ${isActive
                         ? 'bg-blue-600 hover:bg-blue-500'
                         : 'bg-gray-700/50 hover:bg-gray-700'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-white font-medium">{rule.name}</span>
                       <div className="flex gap-1">
                         <button
                           onClick={() => handleRuleClick(rule)}
-                          className={`px-2 py-1 text-xs rounded ${
-                            isActive
+                          className={`px-2 py-1 text-xs rounded ${isActive
                               ? 'bg-blue-500 hover:bg-blue-400 text-white'
                               : 'bg-blue-600 hover:bg-blue-500 text-white'
-                          }`}
+                            }`}
                         >
                           {isActive ? 'Clear' : 'Load'}
                         </button>

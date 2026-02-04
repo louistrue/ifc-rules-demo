@@ -12,7 +12,7 @@ import React, { useState, useCallback } from 'react';
 import { useIfcStore, selectSchema, selectEntityTypes, selectStoreys } from '../../stores/ifc-store';
 import { useRuleStore, selectConditions, selectMatchCount, selectCurrentEntityType } from '../../stores/rule-store';
 import type { Condition, PropertyCondition, SpatialCondition, MaterialCondition, AttributeCondition, QuantityCondition, ClassificationCondition, RelationshipCondition, CompositeCondition } from '../../../../src/core/types';
-import { getPropertySetsForType, getSuggestedConditions } from '../../lib/schema-extractor';
+import { getPropertySetsForType } from '../../lib/schema-extractor';
 import { AiRuleInput } from './AiRuleInput';
 
 // ============================================================================
@@ -41,19 +41,19 @@ export function RuleBuilderPanel() {
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isDragging) return;
-    
+
     // Calculate new position
     let newX = e.clientX - dragOffset.x;
     let newY = e.clientY - dragOffset.y;
-    
+
     // Constrain to viewport bounds
     const panelWidth = 420;
     const panelHeight = 600; // Approximate max height
     const padding = 20;
-    
+
     newX = Math.max(padding, Math.min(newX, window.innerWidth - panelWidth - padding));
     newY = Math.max(padding, Math.min(newY, window.innerHeight - panelHeight - padding));
-    
+
     setPosition({
       x: newX,
       y: newY,
@@ -80,7 +80,7 @@ export function RuleBuilderPanel() {
     const panelWidth = 420;
     const panelHeight = 600; // Approximate max height
     const padding = 20;
-    
+
     return {
       x: Math.max(padding, Math.min(position.x, window.innerWidth - panelWidth - padding)),
       y: Math.max(padding, Math.min(position.y, window.innerHeight - panelHeight - padding)),
@@ -133,8 +133,8 @@ export function RuleBuilderPanel() {
       </div>
 
       {/* Content - Scrollable */}
-      <div 
-        className="p-4 space-y-4 overflow-y-auto overflow-x-visible flex-1 min-h-0" 
+      <div
+        className="p-4 space-y-4 overflow-y-auto overflow-x-visible flex-1 min-h-0"
         onClick={(e) => e.stopPropagation()}
       >
         <AiRuleInput />
@@ -279,7 +279,7 @@ function TypeSelector() {
       {/* Dropdown - rendered as portal-like fixed element for better visibility */}
       {isOpen && (
         <div className="fixed inset-0 z-[100]" onClick={() => setIsOpen(false)}>
-          <div 
+          <div
             className="absolute bg-gray-800 rounded-xl shadow-2xl border border-gray-600 overflow-hidden"
             style={{
               top: '120px',
@@ -314,16 +314,14 @@ function TypeSelector() {
                     <button
                       key={type}
                       onClick={() => handleTypeToggle(type)}
-                      className={`w-full px-4 py-3 flex items-center gap-3 text-sm border-b border-gray-700/50 last:border-0 transition-colors ${
-                        isSelected
+                      className={`w-full px-4 py-3 flex items-center gap-3 text-sm border-b border-gray-700/50 last:border-0 transition-colors ${isSelected
                           ? 'bg-blue-600/20 text-white'
                           : 'text-gray-200 hover:bg-gray-700'
-                      }`}
+                        }`}
                     >
                       {/* Checkbox indicator */}
-                      <span className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
-                        isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-500'
-                      }`}>
+                      <span className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-500'
+                        }`}>
                         {isSelected && (
                           <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
@@ -407,10 +405,10 @@ function ConditionChip({ condition, onRemove }: ConditionChipProps) {
     switch (condition.type) {
       case 'property': {
         const c = condition as PropertyCondition;
-        const valueStr = c.value !== undefined && c.value !== null 
-          ? JSON.stringify(c.value) 
-          : c.operator === 'exists' || c.operator === 'notExists' 
-            ? '' 
+        const valueStr = c.value !== undefined && c.value !== null
+          ? JSON.stringify(c.value)
+          : c.operator === 'exists' || c.operator === 'notExists'
+            ? ''
             : '?';
         return `${c.propertySet}.${c.propertyName} ${c.operator}${valueStr ? ' ' + valueStr : ''}`;
       }
@@ -785,11 +783,10 @@ function SpatialConditionEditor({ onClose }: { onClose: () => void }) {
             <button
               key={storey.name}
               onClick={() => setSelectedStorey(storey.name)}
-              className={`w-full px-3 py-2 rounded text-left text-sm flex items-center justify-between ${
-                selectedStorey === storey.name
+              className={`w-full px-3 py-2 rounded text-left text-sm flex items-center justify-between ${selectedStorey === storey.name
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-800 text-gray-200 hover:bg-gray-600'
-              }`}
+                }`}
             >
               <span>{storey.name}</span>
               <span className="text-gray-400 text-xs">
@@ -868,11 +865,10 @@ function MaterialConditionEditor({ onClose }: { onClose: () => void }) {
           <button
             key={mat.name}
             onClick={() => setSelectedMaterial(mat.name)}
-            className={`w-full px-3 py-2 rounded text-left text-sm flex items-center justify-between ${
-              selectedMaterial === mat.name
+            className={`w-full px-3 py-2 rounded text-left text-sm flex items-center justify-between ${selectedMaterial === mat.name
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-800 text-gray-200 hover:bg-gray-600'
-            }`}
+              }`}
           >
             <span>{mat.name}</span>
             <span className="text-gray-400 text-xs">
@@ -958,31 +954,28 @@ function MatchCountFooter() {
         <div className="flex gap-2">
           <button
             onClick={() => setViewMode(viewMode === 'highlight' ? 'none' : 'highlight')}
-            className={`flex-1 px-2 py-1.5 rounded text-sm ${
-              viewMode === 'highlight'
+            className={`flex-1 px-2 py-1.5 rounded text-sm ${viewMode === 'highlight'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
+              }`}
           >
             Highlight
           </button>
           <button
             onClick={() => setViewMode(viewMode === 'isolate' ? 'none' : 'isolate')}
-            className={`flex-1 px-2 py-1.5 rounded text-sm ${
-              viewMode === 'isolate'
+            className={`flex-1 px-2 py-1.5 rounded text-sm ${viewMode === 'isolate'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
+              }`}
           >
             Isolate
           </button>
           <button
             onClick={() => setViewMode(viewMode === 'hide' ? 'none' : 'hide')}
-            className={`flex-1 px-2 py-1.5 rounded text-sm ${
-              viewMode === 'hide'
+            className={`flex-1 px-2 py-1.5 rounded text-sm ${viewMode === 'hide'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
+              }`}
           >
             Hide
           </button>

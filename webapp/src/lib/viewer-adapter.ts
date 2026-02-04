@@ -61,13 +61,13 @@ export const HIGHLIGHT_OPACITY = {
 export class ViewerAdapter {
   private renderer: unknown;  // ifc-lite Renderer instance
   private state: ViewerState;
-  private callbacks: ViewerCallbacks;
+  private _callbacks: ViewerCallbacks;
   private allElementIds: Set<number>;
 
   constructor(renderer: unknown, allElementIds: number[]) {
     this.renderer = renderer;
     this.allElementIds = new Set(allElementIds);
-    this.callbacks = {};
+    this._callbacks = {};
 
     this.state = {
       highlightedIds: new Set(),
@@ -84,7 +84,11 @@ export class ViewerAdapter {
   // ==========================================================================
 
   setCallbacks(callbacks: ViewerCallbacks): void {
-    this.callbacks = callbacks;
+    this._callbacks = callbacks;
+  }
+
+  getCallbacks(): ViewerCallbacks {
+    return this._callbacks;
   }
 
   // ==========================================================================
