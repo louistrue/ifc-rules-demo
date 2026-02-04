@@ -9,10 +9,9 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { useIfcStore, selectSchema, selectEntityTypes, selectStoreys } from '../../stores/ifc-store';
-import { useRuleStore, selectConditions, selectMatchCount, selectCurrentEntityType } from '../../stores/rule-store';
+import { useIfcStore, selectSchema, selectIndex, selectEntityTypes, selectStoreys } from '../../stores/ifc-store';
+import { useRuleStore, selectConditions, selectMatchCount, selectMatchedIds, selectCurrentEntityType } from '../../stores/rule-store';
 import type { Condition, PropertyCondition, SpatialCondition, MaterialCondition, AttributeCondition, QuantityCondition, ClassificationCondition, RelationshipCondition, CompositeCondition } from '../../../../src/core/types';
-import { getPropertySetsForType } from '../../lib/schema-extractor';
 import { AiRuleInput } from './AiRuleInput';
 
 // ============================================================================
@@ -606,7 +605,8 @@ function ConditionEditor({ type, onClose }: ConditionEditorProps) {
 
 function PropertyConditionEditor({ onClose }: { onClose: () => void }) {
   const schema = useIfcStore(selectSchema);
-  const currentType = useRuleStore(selectCurrentEntityType);
+  const index = useIfcStore(selectIndex);
+  const matchedIds = useRuleStore(selectMatchedIds);
   const addCondition = useRuleStore(state => state.addCondition);
 
   const [pset, setPset] = useState('');
@@ -614,17 +614,64 @@ function PropertyConditionEditor({ onClose }: { onClose: () => void }) {
   const [operator, setOperator] = useState('equals');
   const [value, setValue] = useState('');
 
-  // Get property sets for current type
-  // Fall back to all property sets if filtering returns empty (appliesTo may not be populated)
-  const selectedTypes = Array.isArray(currentType) ? currentType : (currentType ? [currentType] : []);
-  let availablePsets = schema?.propertySets || [];
-  if (selectedTypes.length > 0) {
-    const filtered = getPropertySetsForType(schema!, selectedTypes);
-    if (filtered.length > 0) {
-      availablePsets = filtered;
+  // Get property sets from matched elements only (if there are matches)
+  // This ensures we only show data relevant to the current filter
+  const availablePsets = React.useMemo(() => {
+    if (!schema) return [];
+
+    // If no matches yet, show all property sets from schema
+    if (matchedIds.length === 0 || !index) {
+      return schema.propertySets;
     }
-    // If filtered is empty, show all psets as fallback
-  }
+
+    // Extract property sets from matched elements
+    const psetCounts = new Map<string, {
+      count: number;
+      props: Map<string, { values: Map<string, number>; type: string }>
+    }>();
+
+    for (const id of matchedIds) {
+      const element = index.get(id);
+      if (!element) continue;
+
+      for (const [psetName, props] of Object.entries(element.properties)) {
+        let psetData = psetCounts.get(psetName);
+        if (!psetData) {
+          psetData = { count: 0, props: new Map() };
+          psetCounts.set(psetName, psetData);
+        }
+        psetData.count++;
+
+        for (const [propName, propValue] of Object.entries(props as Record<string, { value: unknown; type?: string }>)) {
+          let propData = psetData.props.get(propName);
+          if (!propData) {
+            propData = { values: new Map(), type: propValue.type || 'string' };
+            psetData.props.set(propName, propData);
+          }
+          const valKey = JSON.stringify(propValue.value);
+          propData.values.set(valKey, (propData.values.get(valKey) || 0) + 1);
+        }
+      }
+    }
+
+    // Convert to schema format
+    return Array.from(psetCounts.entries())
+      .map(([name, data]) => ({
+        name,
+        appliesTo: [],
+        elementCount: data.count,
+        properties: Array.from(data.props.entries()).map(([propName, propData]) => ({
+          name: propName,
+          valueType: propData.type as 'string' | 'number' | 'boolean' | 'null' | 'mixed',
+          values: Array.from(propData.values.entries()).map(([v, count]) => ({
+            value: JSON.parse(v),
+            count
+          })),
+          frequency: Array.from(propData.values.values()).reduce((a, b) => a + b, 0),
+        })),
+      }))
+      .sort((a, b) => b.elementCount - a.elementCount);
+  }, [schema, index, matchedIds]);
 
   // Get properties for selected pset
   const selectedPset = availablePsets.find(p => p.name === pset);
@@ -665,7 +712,7 @@ function PropertyConditionEditor({ onClose }: { onClose: () => void }) {
         <label className="text-xs text-gray-400">Property Set</label>
         {availablePsets.length === 0 ? (
           <div className="text-gray-500 text-sm py-3 text-center bg-gray-800 rounded mt-1">
-            No property sets found in model
+            {matchedIds.length > 0 ? 'No property sets found on matched elements' : 'No property sets found in model'}
           </div>
         ) : (
           <select
@@ -764,10 +811,39 @@ function PropertyConditionEditor({ onClose }: { onClose: () => void }) {
 // ============================================================================
 
 function SpatialConditionEditor({ onClose }: { onClose: () => void }) {
-  const storeys = useIfcStore(selectStoreys);
+  const allStoreys = useIfcStore(selectStoreys);
+  const index = useIfcStore(selectIndex);
+  const matchedIds = useRuleStore(selectMatchedIds);
   const addCondition = useRuleStore(state => state.addCondition);
 
   const [selectedStorey, setSelectedStorey] = useState('');
+
+  // Get storeys from matched elements only
+  const storeys = React.useMemo(() => {
+    // If no matches yet, show all storeys from schema
+    if (matchedIds.length === 0 || !index) {
+      return allStoreys;
+    }
+
+    // Count elements per storey from matched elements
+    const storeyCounts = new Map<string, number>();
+
+    for (const id of matchedIds) {
+      const element = index.get(id);
+      if (!element?.spatial?.storey) continue;
+
+      const storey = element.spatial.storey;
+      storeyCounts.set(storey, (storeyCounts.get(storey) || 0) + 1);
+    }
+
+    // Filter and update counts for storeys that have matched elements
+    return allStoreys
+      .filter(s => storeyCounts.has(s.name))
+      .map(s => ({
+        ...s,
+        elementCount: storeyCounts.get(s.name) || 0,
+      }));
+  }, [allStoreys, index, matchedIds]);
 
   const handleAdd = () => {
     if (!selectedStorey) return;
@@ -793,7 +869,7 @@ function SpatialConditionEditor({ onClose }: { onClose: () => void }) {
         <div className="mt-1 space-y-1 max-h-40 overflow-y-auto">
           {storeys.length === 0 ? (
             <div className="text-gray-500 text-sm py-3 text-center">
-              No storeys found in model
+              {matchedIds.length > 0 ? 'No matched elements have storey data' : 'No storeys found in model'}
             </div>
           ) : (
             storeys.map(storey => (
@@ -840,11 +916,42 @@ function SpatialConditionEditor({ onClose }: { onClose: () => void }) {
 
 function MaterialConditionEditor({ onClose }: { onClose: () => void }) {
   const schema = useIfcStore(selectSchema);
+  const index = useIfcStore(selectIndex);
+  const matchedIds = useRuleStore(selectMatchedIds);
   const addCondition = useRuleStore(state => state.addCondition);
-  const materials = schema?.materials || [];
 
   const [selectedMaterial, setSelectedMaterial] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Get materials from matched elements only
+  const materials = React.useMemo(() => {
+    const allMaterials = schema?.materials || [];
+
+    // If no matches yet, show all materials from schema
+    if (matchedIds.length === 0 || !index) {
+      return allMaterials;
+    }
+
+    // Count materials from matched elements
+    const materialCounts = new Map<string, number>();
+
+    for (const id of matchedIds) {
+      const element = index.get(id);
+      if (!element?.material?.name) continue;
+
+      const matName = element.material.name;
+      materialCounts.set(matName, (materialCounts.get(matName) || 0) + 1);
+    }
+
+    // Return materials found in matched elements
+    return Array.from(materialCounts.entries())
+      .map(([name, count]) => ({
+        name,
+        type: 'single' as const,
+        elementCount: count,
+      }))
+      .sort((a, b) => b.elementCount - a.elementCount);
+  }, [schema, index, matchedIds]);
 
   const filteredMaterials = materials.filter(m =>
     m.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -881,7 +988,9 @@ function MaterialConditionEditor({ onClose }: { onClose: () => void }) {
       <div className="space-y-1 max-h-40 overflow-y-auto">
         {filteredMaterials.length === 0 ? (
           <div className="text-gray-500 text-sm py-3 text-center">
-            {materials.length === 0 ? 'No materials found in model' : 'No matching materials'}
+            {materials.length === 0
+              ? (matchedIds.length > 0 ? 'No matched elements have material data' : 'No materials found in model')
+              : 'No matching materials'}
           </div>
         ) : (
           filteredMaterials.map(mat => (
